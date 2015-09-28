@@ -119,12 +119,25 @@ class AIPlayer(Player):
             newNode = treeNode.copy()
             newNode["move"] = move
             newNode["potential_state"] = resultingState
-            newNode["state_value"] = self.exploreTree(resultingState, playerId, currentDepth+1)
-            nodeList.append(newNode)
+            newNode["state_value"] = self.evaluateState(resultingState)
             # if a goal state has been found, stop evaluating other branches
             if newNode["state_value"] == 1.0:
                 bestNode = newNode
                 break
+            nodeList.append(newNode)
+        # once the quick-eval has completed, determine a subset of
+        # the nodes to expand further
+        # calculate a threshold to determine whether to expand a node
+        if bestNode is None:
+            expansionThreshold = self.evaluateNodes(nodeList) * 0.98
+            for node in nodeList:
+                # only bother expanding nodes that pass a certain threshold
+                # and are not right below the max depth
+                if node["state_value"] >= expansionThreshold and currentDepth != self.maxDepth - 1:
+                    # re-calculated the node's value based on the branch
+                    node["state_value"] = self.exploreTree(node["potential_state"], playerId, currentDepth+1)
+                else:
+                    nodeList.remove(node)
         # if the depth is 0 then all initial moves have been recursively
         # evaluated based on the branches that can be reached from them
         if currentDepth == 0:
