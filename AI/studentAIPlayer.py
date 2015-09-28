@@ -1,4 +1,11 @@
-  # -*- coding: latin-1 -*-
+# -*- coding: latin-1 -*-
+
+##
+# 
+# Homework 3
+#
+# Author(s): Caleb Piekstra, No Partner
+#
 import random, time
 from Player import *
 from Constants import *
@@ -13,8 +20,11 @@ from AIPlayerUtils import *
 
 # a representation of a 'node' in the search tree
 treeNode = {
+    # the Move that would be taken in the given state from the parent node
     "move"              : None,
+    # the state that would be reached by taking the above move
     "potential_state"   : None,
+    # an evaluation of the potential_state
     "state_value"       : 0.0,
 }
 
@@ -54,16 +64,13 @@ class AIPlayer(Player):
     # Return: An overall evaluation score of the list of nodes
     #
     def evaluateNodes(self, nodes):
-        # totalValue = 0.0
-        # for node in nodes:
-            # totalValue += node["state_value"]
-        # # return an average
-        # return totalValue / len(nodes)
+        # holds the greatest state_value in the list of nodes
         bestValue = 0.0
+        # look through the nodes and find the greatest state_value
         for node in nodes:
             if node["state_value"] > bestValue:
                 bestValue = node["state_value"]
-        # return an average
+        # return the greatest state_value
         return bestValue
     
     
@@ -77,7 +84,7 @@ class AIPlayer(Player):
     # Parameters:
     #   self - The object pointer
     #   currentState - The current state being 'searched'
-    #   playerId - The agent's player id (whose turn it is for now)
+    #   playerId - The agent's player id (whoseTurn it is for now)
     #   currentDepth - The depth the given state is in the search tree
     #
     # Return: Either the best Move to make in the given state or an
@@ -85,33 +92,43 @@ class AIPlayer(Player):
     #   on the current depth)
     #
     def exploreTree(self, currentState, playerId, currentDepth):
+        # holds a list of nodes reachable from the currentState
         nodeList = []
+        # holds the node with the greatest state_value
         bestNode = None
+        # loop through all legal moves for the currentState
         for move in listAllLegalMoves(currentState):        
-            # don't bother doing any move evaluations for the queen once she
-            # is no longer on a constr
+            # don't bother doing any move evaluations for the queen 
+            # once she is no longer on a constr
             if move.moveType == MOVE_ANT:         
                 initialCoords = move.coordList[0]
                 if getAntAt(currentState, initialCoords).type == QUEEN:
                     if getConstrAt(currentState, initialCoords) is None:
                         continue
+            # get the state that would result if the move is made
             resultingState = self.processMove(currentState, move)
+            # manually change whoseTurn it is to be the playerId
             resultingState.whoseTurn = playerId
+            # manually change each of the ants to not having moved
             for ant in resultingState.inventories[playerId].ants:
                 ant.hasMoved = False
+            # Create a new node using treeNode as a model
             newNode = treeNode.copy()
             newNode["move"] = move
             newNode["potential_state"] = resultingState
             newNode["state_value"] = self.evaluateState(resultingState)
-            # if we have found a winning state, do not continue
-            # to evaluate the other moves
+            # if a winning (goal) state is found, do not continue
+            # to evaluate any other moves
             if newNode["state_value"] == 1.0:
                 bestNode = newNode
                 break
             nodeList.append(newNode)
+        # save the overall value of the nodeList
         overallValue = self.evaluateNodes(nodeList)
         # base case
         if currentDepth == self.maxDepth:
+            # return the overall value of the current list of nodes 
+            # if the maxDepth is reached in the search tree
             return overallValue
         # recursive case
         else:            
@@ -120,15 +137,20 @@ class AIPlayer(Player):
             if bestNode is None:
                 # we only want to expand the "best 2%" of nodes
                 expansionThreshold = overallValue*0.98
-                # set an initial 'best node' so that we always return one
+                # set an initial 'best node' so that it can be compared against others
                 bestNode = nodeList[0]
+                # go through the node list and re-score each node's state_value by 
+                # recursively searching deeper and deeper in the search tree
                 for node in nodeList:
                     # skip expanding nodes that aren't at or above the expansion threshold
                     if node["state_value"] < expansionThreshold:
                         continue
+                    # re-score the state_value of the node
                     node["state_value"] = self.exploreTree(node["potential_state"], playerId, currentDepth+1)
+                    # keep track of the bestNode by comparing state_values
                     if node["state_value"] > bestNode["state_value"]:
-                        bestNode = node            
+                        bestNode = node    
+            # return the Move that leads to the best branch in the tree
             return bestNode["move"]
     
     
@@ -234,9 +256,7 @@ class AIPlayer(Player):
     # where 0.0 is a loss and 1.0 is a victory and 0.5 is neutral
     # (neither winning nor losing)
     #
-    def evaluateState(self, currentState):
-        # state value ranges between 0 (loser) and 1 (winner!)
-        
+    def evaluateState(self, currentState):        
         # get a reference to the player's inventory
         playerInv = currentState.inventories[currentState.whoseTurn]
         # get a reference to the enemy player's inventory
@@ -254,13 +274,14 @@ class AIPlayer(Player):
             return 1.0
         
         # punish the AI for having more than 2 ants (queen and one other)
+        # the more ants, the longer it takes to decide the best move
         if len(playerInv.ants) > 2:
             return 0.001
         
-        # start out state as being neutral ( nobody is winning or losing )
+        # initial state value is neutral ( no player is winning or losing )
         valueOfState = 0.5        
         # hurting the enemy queen is a very good state to be in
-        valueOfState += 0.1 * (UNIT_STATS[QUEEN][HEALTH] - enemyQueen.health)
+        valueOfState += 0.050 * (UNIT_STATS[QUEEN][HEALTH] - enemyQueen.health)
                 
         # loop through the player's ants and handle rewards or punishments
         # based on whether they are workers or attackers
@@ -269,10 +290,9 @@ class AIPlayer(Player):
                 # Punish the AI severely for leaving the queen on a constr
                 if getConstrAt(currentState, ant.coords) is not None:      
                     return 0.001
-            #elif ant.type == WORKER:
             else:
-                # Reward the AI for having ants
-                valueOfState += 0.1
+                # Reward the AI for having ants other than the queen
+                valueOfState += 0.25
                 # Punish the AI less and less as its ants approach the enemy's queen
                 valueOfState -= 0.005 * stepsToReach(currentState, ant.coords, enemyQueen.coords) 
         
@@ -281,6 +301,7 @@ class AIPlayer(Player):
             return 0.001 + (valueOfState * 0.0001)
         if valueOfState > 1.0:
             return 0.999
+            
         # return the value of the currentState
         return valueOfState
         
@@ -368,6 +389,7 @@ class AIPlayer(Player):
     #Return: Move(moveType [int], coordList [list of 2-tuples of ints], buildType [int]
     ##
     def getMove(self, currentState):
+        # return the best move, found by recursively searching potential moves
         return self.exploreTree(currentState, currentState.whoseTurn, 1)
     
     
