@@ -1135,7 +1135,9 @@ class Game(object):
         if ((self.state.phase == PLAY_PHASE) and 
         ((self.state.inventories[opponentId].getQueen() == None) or
         (self.state.inventories[opponentId].getAnthill().captureHealth <= 0) or
-        (self.state.inventories[playerId].foodCount >= FOOD_GOAL))):
+        (self.state.inventories[playerId].foodCount >= FOOD_GOAL) or
+        (self.state.inventories[opponentId].foodCount == 0 and 
+            len(self.state.inventories[opponentId].ants) == 1))):
             return True
         else:
             return False
