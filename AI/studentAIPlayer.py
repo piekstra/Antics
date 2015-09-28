@@ -10,6 +10,15 @@ from Move import Move
 from GameState import addCoords
 from AIPlayerUtils import *
 
+
+# a representation of a 'node' in the search tree
+treeNode = {
+    "move"              : None,
+    "potential_state"   : None,
+    "state_value"       : 0.0,
+    "parent"            : None
+}
+
 ##
 #AIPlayer
 #Description: The responsbility of this class is to interact with the game by
@@ -28,8 +37,89 @@ class AIPlayer(Player):
     #   inputPlayerId - The id to give the new player (int)
     ##
     def __init__(self, inputPlayerId):
-        #simple extremely efficient search agent winner
-        super(AIPlayer,self).__init__(inputPlayerId, "SeeSaw") 
+        # a depth limit for the search algorithm
+        self.maxDepth = 2
+        # InfoSeargent - the top scecret military INFOrmed SEARch aGENT
+        super(AIPlayer,self).__init__(inputPlayerId, "InfoSeargent") 
+    
+    
+    ##
+    # evaluateNodes
+    # Description: The evaluateNodes method evaluates a list of nodes
+    # and determines their overall evaluation score.
+    #
+    # Parameters:
+    #   self - The object pointer
+    #   nodes - The list of nodes to evaluate
+    #
+    # Return: An overall evaluation score of the list of nodes
+    #
+    def evaluateNodes(self, nodes):
+        bestValue = 0.0
+        for node in nodes:
+            if node["state_value"] > bestValue:
+                bestValue = node["state_value"]
+        return bestValue
+    
+    
+    ##
+    # exploreTree
+    # Description: The exploreTree method explores the search tree
+    # and returns the Move that leads to the best branch in the tree
+    # along with a score indicating just how 'good' that branch is
+    # This method is recursive.
+    #
+    # Parameters:
+    #   self - The object pointer
+    #   currentState - The current state being 'searched'
+    #   playerId - The agent's player id (whose turn it is for now)
+    #   currentDepth - The depth the given state is in the search tree
+    #
+    # Return: Either the best Move to make in the given state or an
+    #   evaluation score for that move on the range [0.0...1.0] (based
+    #   on the current depth)
+    #
+    def exploreTree(self, currentState, playerId, currentDepth):
+        nodeList = []
+        possibleMoves = listAllLegalMoves(currentState)
+        #parentNode = nodeList[len(nodeList)-1]        
+        bestScore = 0.0
+        bestNode = None
+        for move in possibleMoves:
+            resultingState = self.processMove(currentState, move)
+            resultingState.whoseTurn = playerId
+            for inv in resultingState.inventories[PLAYER_ONE:NEUTRAL]:
+                for ant in inv.ants:
+                    ant.hasMoved = False
+            newNode = treeNode.copy()
+            newNode["move"] = move
+            newNode["potential_state"] = resultingState
+            newNode["state_value"] = self.evaluateState(resultingState)
+            # if we have found a winning state, do not continue
+            # to evaluate the other moves
+            if newNode["state_value"] == 1.0:
+                print "found goal state!"
+                bestScore = 1.0
+                bestNode = newNode
+                break
+            #newNode["parent"] = parentNode
+            nodeList.append(newNode)
+        # base case
+        if currentDepth == self.maxDepth:
+            return self.evaluateNodes(nodeList)
+        # recursive case
+        else:
+            # if the bestNode was already found, do not bother
+            # recursively re-scoring each node
+            if bestNode is None:
+                for node in nodeList:
+                    print "exploring move, initial value:", node["state_value"]
+                    node["state_value"] = self.exploreTree(node["potential_state"], playerId, currentDepth+1)
+                    print "final value:", node["state_value"]
+                    if node["state_value"] > bestScore:
+                        bestScore = node["state_value"]
+                        bestNode = node
+        return bestNode["move"]
     
     
     ##
@@ -39,6 +129,7 @@ class AIPlayer(Player):
     # making the move
     #
     # Parameters:
+    #   self - The object pointer
     #   currentState - The current state of the game
     #   move - The move which alters the state
     #
@@ -119,6 +210,20 @@ class AIPlayer(Player):
         return copyOfState
     
     
+    ##
+    # evaluateState
+    # Description: The evaluateState method looks at a state and
+    # assigns a value to the state based on how well the game is
+    # going for the current player
+    #
+    # Parameters:
+    #   self - The object pointer
+    #   currentState - The state to evaluate
+    #
+    # Return: The value of the state on a scale of 0.0 to 1.0
+    # where 0.0 is a loss and 1.0 is a victory and 0.5 is neutral
+    # (neither winning nor losing)
+    #
     def evaluateState(self, currentState):
         # state value ranges between 0 (loser) and 1 (winner!)
         
@@ -192,6 +297,12 @@ class AIPlayer(Player):
                 valueOfState += 0.05
                 # Punish the AI less and less as it's attack ants approach the enemy's queen
                 valueOfState -= 0.02 * stepsToReach(currentState, ant.coords, enemyQueen.coords) 
+        
+        # ensure that 0.0 is a loss and 1.0 is a win ONLY
+        if valueOfState < 0.0:
+            return 0.001 + (valueOfState * 0.0001)
+        if valueOfState > 1.0:
+            return 0.999
         # return the value of the currentState
         return valueOfState
         
@@ -279,18 +390,7 @@ class AIPlayer(Player):
     #Return: Move(moveType [int], coordList [list of 2-tuples of ints], buildType [int]
     ##
     def getMove(self, currentState):
-        possibleMoves = listAllLegalMoves(currentState)
-        bestValue = 0.0
-        bestMove = possibleMoves[0]
-        for move in possibleMoves:
-            moveValue = self.evaluateState(self.processMove(currentState, move))
-            # If the move would win the game, pick it immediately
-            if moveValue >= 1.0:
-                return move
-            if moveValue > bestValue:
-                bestValue = moveValue
-                bestMove = move
-        return bestMove
+        return self.exploreTree(currentState, currentState.whoseTurn, 1)
     
     
     ##
@@ -328,3 +428,80 @@ class AIPlayer(Player):
     def registerWin(self, hasWon):
         #method templaste, not implemented
         pass
+
+ 
+## UNIT TEST(S) 
+# imports required for the unit test(s)
+from GameState import *
+from Inventory import *
+from Location import *
+
+# create a game board
+board = [[Location((col, row)) for row in xrange(0,BOARD_LENGTH)] for col in xrange(0,BOARD_LENGTH)]
+
+# create player 1's inventory
+p1Inventory = Inventory(PLAYER_ONE, [], [], 0)
+
+# Give the player a worker ant for move testing
+p1Inventory.ants.append(Ant((0,0), WORKER, PLAYER_ONE))
+# Make sure to give player a queen so enemy does not
+# instantly win
+p1Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_ONE))
+
+# create player 2's inventory
+p2Inventory = Inventory(PLAYER_TWO, [], [], 0)
+
+# Make sure to give the enemy a queen so player does not
+# instantly win
+p2Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_TWO))
+
+# create a neutral inventory (food!)
+neutralInventory = Inventory(NEUTRAL, [], [], 0)
+
+# create a basic game state
+gameState = GameState(board, [p1Inventory, p2Inventory, neutralInventory], MENU_PHASE, PLAYER_ONE)
+
+# create a move to move the player's WORKER to Location (0, 1)
+move = Move(MOVE_ANT, [(0,0), (0,1)], None)
+
+# Create the SeeSaw AI 
+aiPlayer = AIPlayer(PLAYER_ONE)
+
+# Provess the move and save the copy of the state after the move is made
+newState = aiPlayer.processMove(gameState, move)
+
+# verify that the ANT was moved to Location (0, 1)
+if getAntAt(newState, (0,1)):
+    # get the 'value' of the state resulting from making the move
+    stateValue = aiPlayer.evaluateState(newState)
+    
+    # check the value of the new state
+    # note that minObjectiveDist defaults to 99
+    # the value should be:
+    #    NEUTRAL (0.5) minus (minObjectiveDist - 1) * 0.001
+    #    0.5 - 0.098
+    #    0.402
+    if stateValue == 0.402:
+        print "SeeSaw - Unit Test #1 Passed"
+    else:
+        print "[UT - MOVE_ANT_VALUE] Failure"        
+else:
+    print "[UT - MOVE_ANT] Failure"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
