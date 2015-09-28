@@ -99,14 +99,13 @@ class AIPlayer(Player):
             resultingState.whoseTurn = playerId
             for ant in resultingState.inventories[playerId].ants:
                 ant.hasMoved = False
-            state_value = self.evaluateState(resultingState)
             newNode = treeNode.copy()
             newNode["move"] = move
             newNode["potential_state"] = resultingState
-            newNode["state_value"] = state_value
+            newNode["state_value"] = self.evaluateState(resultingState)
             # if we have found a winning state, do not continue
             # to evaluate the other moves
-            if state_value == 1.0:
+            if newNode["state_value"] == 1.0:
                 bestNode = newNode
                 break
             nodeList.append(newNode)
@@ -122,6 +121,7 @@ class AIPlayer(Player):
                 # we only want to expand the "best 2%" of nodes
                 expansionThreshold = overallValue*0.98
                 # set an initial 'best node' so that we always return one
+                bestNode = nodeList[0]
                 for node in nodeList:
                     # skip expanding nodes that aren't at or above the expansion threshold
                     if node["state_value"] < expansionThreshold:
