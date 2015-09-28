@@ -1,5 +1,5 @@
   # -*- coding: latin-1 -*-
-import random
+import random, time
 from Player import *
 from Constants import *
 from Construction import CONSTR_STATS
@@ -16,7 +16,6 @@ treeNode = {
     "move"              : None,
     "potential_state"   : None,
     "state_value"       : 0.0,
-    "parent"            : None
 }
 
 ##
@@ -55,10 +54,16 @@ class AIPlayer(Player):
     # Return: An overall evaluation score of the list of nodes
     #
     def evaluateNodes(self, nodes):
+        # totalValue = 0.0
+        # for node in nodes:
+            # totalValue += node["state_value"]
+        # # return an average
+        # return totalValue / len(nodes)
         bestValue = 0.0
         for node in nodes:
             if node["state_value"] > bestValue:
                 bestValue = node["state_value"]
+        # return an average
         return bestValue
     
     
@@ -81,45 +86,50 @@ class AIPlayer(Player):
     #
     def exploreTree(self, currentState, playerId, currentDepth):
         nodeList = []
-        possibleMoves = listAllLegalMoves(currentState)
-        #parentNode = nodeList[len(nodeList)-1]        
-        bestScore = 0.0
         bestNode = None
-        for move in possibleMoves:
+        for move in listAllLegalMoves(currentState):        
+            # don't bother doing any move evaluations for the queen once she
+            # is no longer on a constr
+            if move.moveType == MOVE_ANT:         
+                initialCoords = move.coordList[0]
+                if getAntAt(currentState, initialCoords).type == QUEEN:
+                    if getConstrAt(currentState, initialCoords) is None:
+                        continue
             resultingState = self.processMove(currentState, move)
             resultingState.whoseTurn = playerId
-            for inv in resultingState.inventories[PLAYER_ONE:NEUTRAL]:
-                for ant in inv.ants:
-                    ant.hasMoved = False
+            for ant in resultingState.inventories[playerId].ants:
+                ant.hasMoved = False
+            state_value = self.evaluateState(resultingState)
             newNode = treeNode.copy()
             newNode["move"] = move
             newNode["potential_state"] = resultingState
-            newNode["state_value"] = self.evaluateState(resultingState)
+            newNode["state_value"] = state_value
             # if we have found a winning state, do not continue
             # to evaluate the other moves
-            if newNode["state_value"] == 1.0:
-                print "found goal state!"
-                bestScore = 1.0
+            if state_value == 1.0:
                 bestNode = newNode
                 break
-            #newNode["parent"] = parentNode
             nodeList.append(newNode)
+        overallValue = self.evaluateNodes(nodeList)
         # base case
         if currentDepth == self.maxDepth:
-            return self.evaluateNodes(nodeList)
+            return overallValue
         # recursive case
-        else:
+        else:            
             # if the bestNode was already found, do not bother
             # recursively re-scoring each node
             if bestNode is None:
+                # we only want to expand the "best 2%" of nodes
+                expansionThreshold = overallValue*0.98
+                # set an initial 'best node' so that we always return one
                 for node in nodeList:
-                    print "exploring move, initial value:", node["state_value"]
+                    # skip expanding nodes that aren't at or above the expansion threshold
+                    if node["state_value"] < expansionThreshold:
+                        continue
                     node["state_value"] = self.exploreTree(node["potential_state"], playerId, currentDepth+1)
-                    print "final value:", node["state_value"]
-                    if node["state_value"] > bestScore:
-                        bestScore = node["state_value"]
-                        bestNode = node
-        return bestNode["move"]
+                    if node["state_value"] > bestNode["state_value"]:
+                        bestNode = node            
+            return bestNode["move"]
     
     
     ##
@@ -231,72 +241,40 @@ class AIPlayer(Player):
         playerInv = currentState.inventories[currentState.whoseTurn]
         # get a reference to the enemy player's inventory
         enemyInv = currentState.inventories[(currentState.whoseTurn+1) % 2]
-        # get a reference to the player's queen
-        queen = playerInv.getQueen()
         # get a reference to the enemy's queen
         enemyQueen = enemyInv.getQueen()
         
         # game over (lost) if player does not have a queen
         #               or if enemy player has 11 or more food
-        if queen is None or enemyInv.foodCount >= 11:
+        if playerInv.getQueen() is None or enemyInv.foodCount >= 11:
             return 0.0
         # game over (win) if enemy player does not have a queen
         #              or if player has 11 or more food
         if enemyQueen is None or playerInv.foodCount >= 11:
             return 1.0
         
+        # punish the AI for having more than 2 ants (queen and one other)
+        if len(playerInv.ants) > 2:
+            return 0.001
+        
         # start out state as being neutral ( nobody is winning or losing )
         valueOfState = 0.5        
-        # player is winning more if has more food
-        valueOfState += 0.04 * (playerInv.foodCount - enemyInv.foodCount)
         # hurting the enemy queen is a very good state to be in
         valueOfState += 0.1 * (UNIT_STATS[QUEEN][HEALTH] - enemyQueen.health)
-        
-        # the number of workers belonging to the player
-        workerCount = 0
+                
         # loop through the player's ants and handle rewards or punishments
         # based on whether they are workers or attackers
         for ant in playerInv.ants:
-            if ant.type == WORKER:
-                workerCount += 1
-                # Punish the AI severely for having more than 1 worker
-                if workerCount > 1:       
-                    return 0.001       
-                # the distance to the objective closest to the worker
-                minObjectiveDist = 99       
-                # handle worker objectives differently based on .carrying status
-                if ant.carrying:
-                    # Reward the AI for every worker ant that is carrying food
-                    valueOfState += .015
-                    # the distance to the constr closest to the worker
-                    minObjectiveDist = 99
-                    # look through all of the player's constrs and find the distance to the closest one
-                    for constr in playerInv.constrs:
-                        if constr.type == ANTHILL or constr.type == TUNNEL:
-                            constrDist = stepsToReach(currentState, ant.coords, constr.coords)
-                            if constrDist < minObjectiveDist:
-                                minObjectiveDist = constrDist
-                    # Punish the AI less and less as the worker approaches the closest constr
-                    valueOfState -= .001 * (minObjectiveDist - 1) 
-                else:                
-                    for constr in currentState.inventories[NEUTRAL].constrs:
-                        # the player should not try to go for the enemy's food
-                        if constr.type == FOOD and constr.coords[1] <= 3:
-                            # keep track of the closest food
-                            foodDist = stepsToReach(currentState, ant.coords, constr.coords)
-                            if foodDist < minObjectiveDist:
-                                minObjectiveDist = foodDist
-                    # Punish the AI less and less as the worker approaches the closest food
-                    valueOfState -= (minObjectiveDist - 1) * .001
-            elif ant.type == QUEEN:
+            if ant.type == QUEEN:
                 # Punish the AI severely for leaving the queen on a constr
                 if getConstrAt(currentState, ant.coords) is not None:      
                     return 0.001
+            #elif ant.type == WORKER:
             else:
-                # Reward the AI for having attack ants
-                valueOfState += 0.05
-                # Punish the AI less and less as it's attack ants approach the enemy's queen
-                valueOfState -= 0.02 * stepsToReach(currentState, ant.coords, enemyQueen.coords) 
+                # Reward the AI for having ants
+                valueOfState += 0.1
+                # Punish the AI less and less as its ants approach the enemy's queen
+                valueOfState -= 0.005 * stepsToReach(currentState, ant.coords, enemyQueen.coords) 
         
         # ensure that 0.0 is a loss and 1.0 is a win ONLY
         if valueOfState < 0.0:
@@ -430,63 +408,63 @@ class AIPlayer(Player):
         pass
 
  
-## UNIT TEST(S) 
-# imports required for the unit test(s)
-from GameState import *
-from Inventory import *
-from Location import *
+# ## UNIT TEST(S) 
+# # imports required for the unit test(s)
+# from GameState import *
+# from Inventory import *
+# from Location import *
 
-# create a game board
-board = [[Location((col, row)) for row in xrange(0,BOARD_LENGTH)] for col in xrange(0,BOARD_LENGTH)]
+# # create a game board
+# board = [[Location((col, row)) for row in xrange(0,BOARD_LENGTH)] for col in xrange(0,BOARD_LENGTH)]
 
-# create player 1's inventory
-p1Inventory = Inventory(PLAYER_ONE, [], [], 0)
+# # create player 1's inventory
+# p1Inventory = Inventory(PLAYER_ONE, [], [], 0)
 
-# Give the player a worker ant for move testing
-p1Inventory.ants.append(Ant((0,0), WORKER, PLAYER_ONE))
-# Make sure to give player a queen so enemy does not
-# instantly win
-p1Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_ONE))
+# # Give the player a worker ant for move testing
+# p1Inventory.ants.append(Ant((0,0), WORKER, PLAYER_ONE))
+# # Make sure to give player a queen so enemy does not
+# # instantly win
+# p1Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_ONE))
 
-# create player 2's inventory
-p2Inventory = Inventory(PLAYER_TWO, [], [], 0)
+# # create player 2's inventory
+# p2Inventory = Inventory(PLAYER_TWO, [], [], 0)
 
-# Make sure to give the enemy a queen so player does not
-# instantly win
-p2Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_TWO))
+# # Make sure to give the enemy a queen so player does not
+# # instantly win
+# p2Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_TWO))
 
-# create a neutral inventory (food!)
-neutralInventory = Inventory(NEUTRAL, [], [], 0)
+# # create a neutral inventory (food!)
+# neutralInventory = Inventory(NEUTRAL, [], [], 0)
 
-# create a basic game state
-gameState = GameState(board, [p1Inventory, p2Inventory, neutralInventory], MENU_PHASE, PLAYER_ONE)
+# # create a basic game state
+# gameState = GameState(board, [p1Inventory, p2Inventory, neutralInventory], MENU_PHASE, PLAYER_ONE)
 
-# create a move to move the player's WORKER to Location (0, 1)
-move = Move(MOVE_ANT, [(0,0), (0,1)], None)
+# # create a move to move the player's WORKER to Location (0, 1)
+# move = Move(MOVE_ANT, [(0,0), (0,1)], None)
 
-# Create the SeeSaw AI 
-aiPlayer = AIPlayer(PLAYER_ONE)
+# # Create the SeeSaw AI 
+# aiPlayer = AIPlayer(PLAYER_ONE)
 
-# Provess the move and save the copy of the state after the move is made
-newState = aiPlayer.processMove(gameState, move)
+# # Provess the move and save the copy of the state after the move is made
+# newState = aiPlayer.processMove(gameState, move)
 
-# verify that the ANT was moved to Location (0, 1)
-if getAntAt(newState, (0,1)):
-    # get the 'value' of the state resulting from making the move
-    stateValue = aiPlayer.evaluateState(newState)
+# # verify that the ANT was moved to Location (0, 1)
+# if getAntAt(newState, (0,1)):
+    # # get the 'value' of the state resulting from making the move
+    # stateValue = aiPlayer.evaluateState(newState)
     
-    # check the value of the new state
-    # note that minObjectiveDist defaults to 99
-    # the value should be:
-    #    NEUTRAL (0.5) minus (minObjectiveDist - 1) * 0.001
-    #    0.5 - 0.098
-    #    0.402
-    if stateValue == 0.402:
-        print "SeeSaw - Unit Test #1 Passed"
-    else:
-        print "[UT - MOVE_ANT_VALUE] Failure"        
-else:
-    print "[UT - MOVE_ANT] Failure"
+    # # check the value of the new state
+    # # note that minObjectiveDist defaults to 99
+    # # the value should be:
+    # #    NEUTRAL (0.5) minus (minObjectiveDist - 1) * 0.001
+    # #    0.5 - 0.098
+    # #    0.402
+    # if stateValue == 0.402:
+        # print "SeeSaw - Unit Test #1 Passed"
+    # else:
+        # print "[UT - MOVE_ANT_VALUE] Failure"        
+# else:
+    # print "[UT - MOVE_ANT] Failure"
 
 
 
