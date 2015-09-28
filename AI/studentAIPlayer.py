@@ -92,6 +92,9 @@ class AIPlayer(Player):
     #   on the current depth)
     #
     def exploreTree(self, currentState, playerId, currentDepth):
+        # base case, maxDepth reached, return the value of the currentState
+        if currentDepth == self.maxDepth:
+            return self.evaluateState(currentState)
         # holds a list of nodes reachable from the currentState
         nodeList = []
         # holds the node with the greatest state_value
@@ -116,42 +119,30 @@ class AIPlayer(Player):
             newNode = treeNode.copy()
             newNode["move"] = move
             newNode["potential_state"] = resultingState
-            newNode["state_value"] = self.evaluateState(resultingState)
-            # if a winning (goal) state is found, do not continue
-            # to evaluate any other moves
+            newNode["state_value"] = self.exploreTree(resultingState, playerId, currentDepth+1)
+            nodeList.append(newNode)
+            # if a goal state has been found, stop evaluating other branches
             if newNode["state_value"] == 1.0:
                 bestNode = newNode
                 break
-            nodeList.append(newNode)
-        # save the overall value of the nodeList
-        overallValue = self.evaluateNodes(nodeList)
-        # base case
-        if currentDepth == self.maxDepth:
-            # return the overall value of the current list of nodes 
-            # if the maxDepth is reached in the search tree
-            return overallValue
-        # recursive case
-        else:            
-            # if the bestNode was already found, do not bother
-            # recursively re-scoring each node
+        # if the depth is 0 then all initial moves have been recursively
+        # evaluated based on the branches that can be reached from them
+        if currentDepth == 0:
+            # if a goal state was found do not search for an ideal state
             if bestNode is None:
-                # we only want to expand the "best 2%" of nodes
-                expansionThreshold = overallValue*0.98
-                # set an initial 'best node' so that it can be compared against others
+                # go through the node list and find the one with the best branch
                 bestNode = nodeList[0]
-                # go through the node list and re-score each node's state_value by 
-                # recursively searching deeper and deeper in the search tree
                 for node in nodeList:
-                    # skip expanding nodes that aren't at or above the expansion threshold
-                    if node["state_value"] < expansionThreshold:
-                        continue
-                    # re-score the state_value of the node
-                    node["state_value"] = self.exploreTree(node["potential_state"], playerId, currentDepth+1)
-                    # keep track of the bestNode by comparing state_values
                     if node["state_value"] > bestNode["state_value"]:
-                        bestNode = node    
-            # return the Move that leads to the best branch in the tree
+                        bestNode = node
             return bestNode["move"]
+        # return the overallValue of this 'branch' of nodes
+        else:        
+            # if a goal state was found then consider this branch victorius
+            if bestNode is not None:
+                return 1.0
+            # return the overall value of the nodeList
+            return self.evaluateNodes(nodeList)
     
     
     ##
@@ -390,7 +381,7 @@ class AIPlayer(Player):
     ##
     def getMove(self, currentState):
         # return the best move, found by recursively searching potential moves
-        return self.exploreTree(currentState, currentState.whoseTurn, 1)
+        return self.exploreTree(currentState, currentState.whoseTurn, 0)
     
     
     ##
