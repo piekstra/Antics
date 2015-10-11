@@ -47,9 +47,35 @@ class AIPlayer(Player):
     ##
     def __init__(self, inputPlayerId):
         # a depth limit for the search algorithm
-        self.maxDepth = 2
-        # InfoSeargent - the top scecret military INFOrmed SEARch aGENT
-        super(AIPlayer,self).__init__(inputPlayerId, "InfoSeargent") 
+        self.maxDepth = 3
+        # Agent_WillRobinson - Robinson, a man on a mission
+        super(AIPlayer,self).__init__(inputPlayerId, "Agent_Will_Robinson") 
+
+        
+    ## TODO: comments
+    def vectorDistance(self, pos1, pos2):
+        return (abs(pos1[0] - pos2[0]) +
+                    abs(pos1[1] - pos2[1]))
+                    
+    
+    ## TODO: comments
+    def distClosestAnt(self, currentState, initialCoords):
+        # get a list of the enemy player's ants
+        closestAntDist = 999
+        for ant in currentState.inventories[(currentState.whoseTurn+1)%2].ants:
+            tempAntDist = self.vectorDistance(ant.coords, initialCoords)
+            if tempAntDist < closestAntDist:
+                closestAntDist = tempAntDist
+        return closestAntDist
+    
+    
+    ## TODO: comments
+    def dangerWillRobinson(self, currentState, initialCoords):
+        # if the closest enemy ant is more than 4 "steps" away, 
+        # the queen is considered safe
+        if self.distClosestAnt(currentState, initialCoords) <= 4:    
+            return True
+        return False
     
     
     ##
@@ -106,15 +132,17 @@ class AIPlayer(Player):
             if move.moveType == MOVE_ANT:         
                 initialCoords = move.coordList[0]
                 if getAntAt(currentState, initialCoords).type == QUEEN:
-                    if getConstrAt(currentState, initialCoords) is None:
+                    # check if the queen is in danger! otherwise do not evaluate or
+                    # expand the potential state
+                    if not self.dangerWillRobinson(currentState, initialCoords):
                         continue
             # get the state that would result if the move is made
             resultingState = self.processMove(currentState, move)
             # manually change whoseTurn it is to be the playerId
-            resultingState.whoseTurn = playerId
+            #resultingState.whoseTurn = playerId
             # manually change each of the ants to not having moved
-            for ant in resultingState.inventories[playerId].ants:
-                ant.hasMoved = False
+            # for ant in resultingState.inventories[playerId].ants:
+                # ant.hasMoved = False
             # Create a new node using treeNode as a model
             newNode = treeNode.copy()
             newNode["move"] = move
@@ -260,6 +288,8 @@ class AIPlayer(Player):
     # where 0.0 is a loss and 1.0 is a victory and 0.5 is neutral
     # (neither winning nor losing)
     #
+    # Direct win/losses are either a technical victory or regicide
+    #
     def evaluateState(self, currentState):        
         # get a reference to the player's inventory
         playerInv = currentState.inventories[currentState.whoseTurn]
@@ -271,19 +301,22 @@ class AIPlayer(Player):
         # game over (lost) if player does not have a queen
         #               or if enemy player has 11 or more food
         if playerInv.getQueen() is None or enemyInv.foodCount >= 11:
+            print "PLAYER", currentState.whoseTurn, "LOSES"
             return 0.0
         # game over (win) if enemy player does not have a queen
         #              or if player has 11 or more food
         if enemyQueen is None or playerInv.foodCount >= 11:
+            print "PLAYER", currentState.whoseTurn, "WINS"
             return 1.0
+        
+        # initial state value is neutral ( no player is winning or losing )
+        valueOfState = 0.5        
         
         # punish the AI for having more than 2 ants (queen and one other)
         # the more ants, the longer it takes to decide the best move
         if len(playerInv.ants) > 2:
-            return 0.001
-        
-        # initial state value is neutral ( no player is winning or losing )
-        valueOfState = 0.5        
+            valueOfState -= 0.25
+            
         # hurting the enemy queen is a very good state to be in
         valueOfState += 0.050 * (UNIT_STATS[QUEEN][HEALTH] - enemyQueen.health)
                 
@@ -293,21 +326,35 @@ class AIPlayer(Player):
             if ant.type == QUEEN:
                 # Punish the AI severely for leaving the queen on a constr
                 if getConstrAt(currentState, ant.coords) is not None:      
-                    return 0.001
+                    valueOfState -= 0.1
+                    continue
+                # determine the distance from the queen to the closest enemy ant
+                dist = self.distClosestAnt(currentState, ant.coords)
+                # if the enemy is too close, punish the AI for not moving the queen away
+                if dist <= 4:
+                    valueOfState -= dist*0.02
             else:
                 # Reward the AI for having ants other than the queen
                 valueOfState += 0.25
                 # Punish the AI less and less as its ants approach the enemy's queen
-                valueOfState -= 0.005 * stepsToReach(currentState, ant.coords, enemyQueen.coords) 
+                valueOfState -= 0.005 * self.vectorDistance(ant.coords, enemyQueen.coords)
         
         # ensure that 0.0 is a loss and 1.0 is a win ONLY
         if valueOfState < 0.0:
-            return 0.001 + (valueOfState * 0.0001)
+            valueOfState = 0.001 + (valueOfState * 0.0001)
         if valueOfState > 1.0:
-            return 0.999
+            valueOfState =  0.999
             
         # return the value of the currentState
-        return valueOfState
+        # Value if our turn, otherwise 1-value if opponents turn
+        # Doing 1-value is the equivalent of looking at the min value
+        # since it is the best move for the opponent, and therefore the worst move
+        # for our AI
+        if currentState.whoseTurn == self.playerId:
+            print "max", valueOfState
+            return valueOfState
+        print "min", 1-valueOfState
+        return 1-valueOfState
         
     
     ##
@@ -393,6 +440,8 @@ class AIPlayer(Player):
     #Return: Move(moveType [int], coordList [list of 2-tuples of ints], buildType [int]
     ##
     def getMove(self, currentState):
+        # save our id
+        self.playerId = currentState.whoseTurn
         # return the best move, found by recursively searching potential moves
         return self.exploreTree(currentState, currentState.whoseTurn, 0)
     
