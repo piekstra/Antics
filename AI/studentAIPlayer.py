@@ -17,7 +17,7 @@ from Move import Move
 from GameState import addCoords
 from AIPlayerUtils import *
 
-
+INFINITY = 9999
 # a representation of a 'node' in the search tree
 treeNode = {
     # the Move that would be taken in the given state from the parent node
@@ -26,6 +26,8 @@ treeNode = {
     "potential_state"   : None,
     # an evaluation of the potential_state
     "state_value"       : 0.0,
+    # a reference to the parent node
+    "parent_node"       : None
 }
 
 ##
@@ -98,7 +100,188 @@ class AIPlayer(Player):
                 bestValue = node["state_value"]
         # return the greatest state_value
         return bestValue
-    
+
+    ##
+    # alpha_beta_search
+    # Description: use minimax with alpha beta pruning to determine what move to make
+    #
+    # Parameters:
+    #   self - the object pointer
+    #   node - the initial node, before any moves are explored
+    #
+    # Returns: the move which benefits the opposing player the least.
+    #
+    ##
+    def alpha_beta_search(self, node):
+        bestNode = self.max_value(node, -INFINITY, INFINITY, 0)
+        while bestNode["parent_node"]["parent_node"] is not None:
+            bestNode = bestNode["parent_node"]
+        return bestNode["move"]
+
+
+    ##TODO: comments
+    def createNode(self, move, resultingState, parent):
+        # Create a new node using treeNode as a model
+        newNode = treeNode.copy()
+        newNode["move"] = move
+        newNode["potential_state"] = resultingState
+        newNode["state_value"] = self.evaluateState(resultingState)
+        newNode["parent_node"] = parent
+        # if a goal state has been found, stop evaluating other branches
+
+        return newNode
+
+
+
+    ##
+    # max_value
+    # Description: returns the best move our player can make from the current state
+    #
+    # Parameters:
+    #   self - the object pointer
+    #   node - the current node, before any moves are explored
+    #   alpha - the alpha value, the value of our best move
+    #   beta - the value of the opponent's best move
+    #   currentDepth - the current depth of the node from the initial node
+    #
+    # Returns: the move which benefits the opposing player the least (alpha).
+    #
+    ##
+    def max_value(self, node, alpha, beta, currentDepth):
+        # base case, maxDepth reached, return the value of the currentState
+        if currentDepth == self.maxDepth:
+            return node
+        state = node["potential_state"]
+        v = -INFINITY
+
+        # holds a list of nodes reachable from the currentState
+        nodeList = []
+        # loop through all legal moves for the currentState
+        for move in listAllLegalMoves(state):
+            # don't bother doing any move evaluations for the queen
+            # once she is no longer on a constr
+            if move.moveType == MOVE_ANT:
+                initialCoords = move.coordList[0]
+                if getAntAt(state, initialCoords).type == QUEEN:
+                    # check if the queen is in danger! otherwise do not evaluate or
+                    # expand the potential state
+                    if not self.dangerWillRobinson(state, initialCoords):
+                        continue
+            # get the state that would result if the move is made
+            resultingState = self.processMove(state, move)
+            #create a newNode for the resulting state
+            newNode = self.createNode(move, resultingState, node)
+            # if a goal state has been found, stop evaluating other branches
+            if newNode["state_value"] == 1.0:
+                #we have a goal state, no alpha_beta evaluation is needed
+                return newNode
+            nodeList.append(newNode)
+
+        #holds a reference to the current best node to move to
+        bestValNode = None
+        #if it is our players turn
+        if (self.playerId == state.whoseTurn):
+            #sort nodes from greatest to least
+            sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'], reverse=True)
+            for tempNode in sortedNodeList:
+                maxValNode = self.max_value(tempNode, alpha, beta, currentDepth+1)
+                #if it's our turn and we're in max_value, stay in max_value
+                if v < maxValNode["state_value"]:
+                        bestValNode = maxValNode
+                        v = maxValNode["state_value"]
+                if v >= beta:
+                    return maxValNode
+                alpha = max(alpha, v)
+        #else it is the opponents player turn
+        else:
+            sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'])
+            for tempNode in sortedNodeList:
+                maxValNode = self.min_value(tempNode, alpha, beta, currentDepth+1)
+                #if it's opponent's turn and they're in max_value, to toggle to min_value
+                if v < maxValNode["state_value"]:
+                       bestValNode = maxValNode
+                       v = maxValNode["state_value"]
+                if v >= beta:
+                    return maxValNode
+                alpha = max(alpha, v)
+
+        return bestValNode
+
+
+    ##
+    # min_value
+    # Description: returns the best move our opponent can make from the current state
+    #
+    # Parameters:
+    #   self - the object pointer
+    #   node - the current node, before any moves are explored
+    #   alpha - the alpha value, the value of our best move
+    #   beta - the value of the opponent's best move
+    #   currentDepth - the current depth of the node from the initial node
+    #
+    # Returns: the move which benefits the opposing player the least (alpha).
+    ##
+    def min_value(self, node, alpha, beta, currentDepth):
+        # base case, maxDepth reached, return the value of the currentState
+        if currentDepth == self.maxDepth:
+            return node
+        state = node["potential_state"]
+        v = INFINITY
+
+        # holds a list of nodes reachable from the currentState
+        nodeList = []
+        # loop through all legal moves for the currentState
+        for move in listAllLegalMoves(state):
+            # don't bother doing any move evaluations for the queen
+            # once she is no longer on a constr
+            if move.moveType == MOVE_ANT:
+                initialCoords = move.coordList[0]
+                if getAntAt(state, initialCoords).type == QUEEN:
+                    # check if the queen is in danger! otherwise do not evaluate or
+                    # expand the potential state
+                    if not self.dangerWillRobinson(state, initialCoords):
+                        continue
+            # get the state that would result if the move is made
+            resultingState = self.processMove(state, move)
+            #create a newNode for the resulting state
+            newNode = self.createNode(move, resultingState, node)
+            # if a goal state has been found, stop evaluating other branches
+            if newNode["state_value"] == 0.0:
+                #we have a goal state, no alpha_beta evaluation is needed
+                return newNode
+
+            nodeList.append(newNode)
+
+        #holds a reference to the current best node to move to
+        bestValNode = None
+        #if it is our players turn
+        if (self.playerId == state.whoseTurn):
+            #sort nodes from greatest to least
+            sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'], reverse=True)
+            for tempNode in sortedNodeList:
+                minValNode = self.max_value(tempNode, alpha, beta, currentDepth+1)
+                #if it's our turn and we're in max_value, stay in max_value
+                if v > minValNode["state_value"]:
+                        bestValNode = minValNode
+                        v = minValNode["state_value"]
+                if v <= alpha:
+                    return minValNode
+                beta = min(beta, v)
+        #else it is the opponents player turn
+        else:
+            sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'])
+            for tempNode in sortedNodeList:
+                minValNode = self.min_value(tempNode, alpha, beta, currentDepth+1)
+                #if it's opponent's turn and they're in max_value, to toggle to min_value
+                if v > minValNode["state_value"]:
+                       bestValNode = minValNode
+                       v = minValNode["state_value"]
+                if v <= alpha:
+                    return minValNode
+                beta = min(beta, v)
+
+        return bestValNode
+
     
     ##
     # exploreTree
@@ -157,15 +340,17 @@ class AIPlayer(Player):
         # the nodes to expand further
         # calculate a threshold to determine whether to expand a node
         if bestNode is None:
-            expansionThreshold = self.evaluateNodes(nodeList) * 0.98
-            for node in nodeList:
+            #sort the current nodeList (from greatest to least) based off of their current 'state_value'
+            sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'], reverse=True)
+
+            #loop throught the nodes, update the branch based on their branch value
+            for node in sortedNodeList:
                 # only bother expanding nodes that pass a certain threshold
                 # and are not right below the max depth
-                if node["state_value"] >= expansionThreshold and currentDepth != self.maxDepth - 1:
+                if currentDepth != self.maxDepth - 1:
                     # re-calculated the node's value based on the branch
                     node["state_value"] = self.exploreTree(node["potential_state"], playerId, currentDepth+1)
-                else:
-                    nodeList.remove(node)
+
         # if the depth is 0 then all initial moves have been recursively
         # evaluated based on the branches that can be reached from them
         if currentDepth == 0:
@@ -179,7 +364,7 @@ class AIPlayer(Player):
             return bestNode["move"]
         # return the overallValue of this 'branch' of nodes
         else:        
-            # if a goal state was found then consider this branch victorius
+            # if a goal state was found then consider this branch victorious
             if bestNode is not None:
                 return 1.0
             # return the overall value of the nodeList
@@ -301,12 +486,12 @@ class AIPlayer(Player):
         # game over (lost) if player does not have a queen
         #               or if enemy player has 11 or more food
         if playerInv.getQueen() is None or enemyInv.foodCount >= 11:
-            print "PLAYER", currentState.whoseTurn, "LOSES"
+            print ("PLAYER", currentState.whoseTurn, "LOSES")
             return 0.0
         # game over (win) if enemy player does not have a queen
         #              or if player has 11 or more food
         if enemyQueen is None or playerInv.foodCount >= 11:
-            print "PLAYER", currentState.whoseTurn, "WINS"
+            print ("PLAYER", currentState.whoseTurn, "WINS")
             return 1.0
         
         # initial state value is neutral ( no player is winning or losing )
@@ -351,9 +536,9 @@ class AIPlayer(Player):
         # since it is the best move for the opponent, and therefore the worst move
         # for our AI
         if currentState.whoseTurn == self.playerId:
-            print "max", valueOfState
+            print ("max", valueOfState)
             return valueOfState
-        print "min", 1-valueOfState
+        print ("min", 1-valueOfState)
         return 1-valueOfState
         
     
@@ -442,8 +627,13 @@ class AIPlayer(Player):
     def getMove(self, currentState):
         # save our id
         self.playerId = currentState.whoseTurn
+        #create the initial node to analyze
+        initNode = self.createNode(None, currentState, None)
+        return self.alpha_beta_search(initNode)
+
+
         # return the best move, found by recursively searching potential moves
-        return self.exploreTree(currentState, currentState.whoseTurn, 0)
+        #return self.exploreTree(currentState, currentState.whoseTurn, 0)
     
     
     ##
