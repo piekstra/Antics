@@ -101,6 +101,7 @@ class AIPlayer(Player):
         # return the greatest state_value
         return bestValue
 
+        
     ##
     # alpha_beta_search
     # Description: use minimax with alpha beta pruning to determine what move to make
@@ -127,10 +128,7 @@ class AIPlayer(Player):
         newNode["potential_state"] = resultingState
         newNode["state_value"] = self.evaluateState(resultingState)
         newNode["parent_node"] = parent
-        # if a goal state has been found, stop evaluating other branches
-
         return newNode
-
 
 
     ##
@@ -162,7 +160,8 @@ class AIPlayer(Player):
             # once she is no longer on a constr
             if move.moveType == MOVE_ANT:
                 initialCoords = move.coordList[0]
-                if getAntAt(state, initialCoords).type == QUEEN:
+                if (getAntAt(state, initialCoords).type == QUEEN 
+                    and getConstrAt(state, initialCoords) is None):
                     # check if the queen is in danger! otherwise do not evaluate or
                     # expand the potential state
                     if not self.dangerWillRobinson(state, initialCoords):
@@ -177,12 +176,14 @@ class AIPlayer(Player):
                 return newNode
             nodeList.append(newNode)
 
+        #sort nodes from greatest to least
+        sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'], reverse=True)
+        
         #holds a reference to the current best node to move to
         bestValNode = None
+                
         #if it is our players turn
         if (self.playerId == state.whoseTurn):
-            #sort nodes from greatest to least
-            sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'], reverse=True)
             for tempNode in sortedNodeList:
                 maxValNode = self.max_value(tempNode, alpha, beta, currentDepth+1)
                 #if it's our turn and we're in max_value, stay in max_value
@@ -236,7 +237,8 @@ class AIPlayer(Player):
             # once she is no longer on a constr
             if move.moveType == MOVE_ANT:
                 initialCoords = move.coordList[0]
-                if getAntAt(state, initialCoords).type == QUEEN:
+                if (getAntAt(state, initialCoords).type == QUEEN 
+                    and getConstrAt(state, initialCoords) is None):
                     # check if the queen is in danger! otherwise do not evaluate or
                     # expand the potential state
                     if not self.dangerWillRobinson(state, initialCoords):
@@ -249,15 +251,16 @@ class AIPlayer(Player):
             if newNode["state_value"] == 0.0:
                 #we have a goal state, no alpha_beta evaluation is needed
                 return newNode
-
             nodeList.append(newNode)
+            
+        #sort nodes from least to greatest
+        sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'])
 
         #holds a reference to the current best node to move to
         bestValNode = None
+        
         #if it is our players turn
         if (self.playerId == state.whoseTurn):
-            #sort nodes from greatest to least
-            sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'], reverse=True)
             for tempNode in sortedNodeList:
                 minValNode = self.max_value(tempNode, alpha, beta, currentDepth+1)
                 #if it's our turn and we're in max_value, stay in max_value
@@ -269,7 +272,6 @@ class AIPlayer(Player):
                 beta = min(beta, v)
         #else it is the opponents player turn
         else:
-            sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'])
             for tempNode in sortedNodeList:
                 minValNode = self.min_value(tempNode, alpha, beta, currentDepth+1)
                 #if it's opponent's turn and they're in max_value, to toggle to min_value
@@ -281,94 +283,6 @@ class AIPlayer(Player):
                 beta = min(beta, v)
 
         return bestValNode
-
-    
-    ##
-    # exploreTree
-    # Description: The exploreTree method explores the search tree
-    # and returns the Move that leads to the best branch in the tree
-    # along with a score indicating just how 'good' that branch is
-    # This method is recursive.
-    #
-    # Parameters:
-    #   self - The object pointer
-    #   currentState - The current state being 'searched'
-    #   playerId - The agent's player id (whoseTurn it is for now)
-    #   currentDepth - The depth the given state is in the search tree
-    #
-    # Return: Either the best Move to make in the given state or an
-    #   evaluation score for that move on the range [0.0...1.0] (based
-    #   on the current depth)
-    #
-    def exploreTree(self, currentState, playerId, currentDepth):
-        # base case, maxDepth reached, return the value of the currentState
-        if currentDepth == self.maxDepth:
-            return self.evaluateState(currentState)
-        # holds a list of nodes reachable from the currentState
-        nodeList = []
-        # holds the node with the greatest state_value
-        bestNode = None
-        # loop through all legal moves for the currentState
-        for move in listAllLegalMoves(currentState):        
-            # don't bother doing any move evaluations for the queen 
-            # once she is no longer on a constr
-            if move.moveType == MOVE_ANT:         
-                initialCoords = move.coordList[0]
-                if getAntAt(currentState, initialCoords).type == QUEEN:
-                    # check if the queen is in danger! otherwise do not evaluate or
-                    # expand the potential state
-                    if not self.dangerWillRobinson(currentState, initialCoords):
-                        continue
-            # get the state that would result if the move is made
-            resultingState = self.processMove(currentState, move)
-            # manually change whoseTurn it is to be the playerId
-            #resultingState.whoseTurn = playerId
-            # manually change each of the ants to not having moved
-            # for ant in resultingState.inventories[playerId].ants:
-                # ant.hasMoved = False
-            # Create a new node using treeNode as a model
-            newNode = treeNode.copy()
-            newNode["move"] = move
-            newNode["potential_state"] = resultingState
-            newNode["state_value"] = self.evaluateState(resultingState)
-            # if a goal state has been found, stop evaluating other branches
-            if newNode["state_value"] == 1.0:
-                bestNode = newNode
-                break
-            nodeList.append(newNode)
-        # once the quick-eval has completed, determine a subset of
-        # the nodes to expand further
-        # calculate a threshold to determine whether to expand a node
-        if bestNode is None:
-            #sort the current nodeList (from greatest to least) based off of their current 'state_value'
-            sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'], reverse=True)
-
-            #loop throught the nodes, update the branch based on their branch value
-            for node in sortedNodeList:
-                # only bother expanding nodes that pass a certain threshold
-                # and are not right below the max depth
-                if currentDepth != self.maxDepth - 1:
-                    # re-calculated the node's value based on the branch
-                    node["state_value"] = self.exploreTree(node["potential_state"], playerId, currentDepth+1)
-
-        # if the depth is 0 then all initial moves have been recursively
-        # evaluated based on the branches that can be reached from them
-        if currentDepth == 0:
-            # if a goal state was found do not search for an ideal state
-            if bestNode is None:
-                # go through the node list and find the one with the best branch
-                bestNode = nodeList[0]
-                for node in nodeList:
-                    if node["state_value"] > bestNode["state_value"]:
-                        bestNode = node
-            return bestNode["move"]
-        # return the overallValue of this 'branch' of nodes
-        else:        
-            # if a goal state was found then consider this branch victorious
-            if bestNode is not None:
-                return 1.0
-            # return the overall value of the nodeList
-            return self.evaluateNodes(nodeList)
     
     
     ##
@@ -486,25 +400,21 @@ class AIPlayer(Player):
         # game over (lost) if player does not have a queen
         #               or if enemy player has 11 or more food
         if playerInv.getQueen() is None or enemyInv.foodCount >= 11:
-            print ("PLAYER", currentState.whoseTurn, "LOSES")
             return 0.0
         # game over (win) if enemy player does not have a queen
         #              or if player has 11 or more food
         if enemyQueen is None or playerInv.foodCount >= 11:
-            print ("PLAYER", currentState.whoseTurn, "WINS")
             return 1.0
         
         # initial state value is neutral ( no player is winning or losing )
         valueOfState = 0.5        
-        
-        # punish the AI for having more than 2 ants (queen and one other)
-        # the more ants, the longer it takes to decide the best move
-        if len(playerInv.ants) > 2:
-            valueOfState -= 0.25
             
         # hurting the enemy queen is a very good state to be in
         valueOfState += 0.050 * (UNIT_STATS[QUEEN][HEALTH] - enemyQueen.health)
-                
+        
+        # keeps track of the number of ants the player has besides the queen
+        numNonQueenAnts = 0            
+        
         # loop through the player's ants and handle rewards or punishments
         # based on whether they are workers or attackers
         for ant in playerInv.ants:
@@ -519,8 +429,13 @@ class AIPlayer(Player):
                 if dist <= 4:
                     valueOfState -= dist*0.02
             else:
-                # Reward the AI for having ants other than the queen
-                valueOfState += 0.25
+                numNonQueenAnts += 1
+                if numNonQueenAnts < 2:                    
+                    # Reward the AI for having one ant other than the queen
+                    valueOfState += 0.25
+                else:
+                    # punish the AI for having more than 1 ant besides the queen
+                    valueOfState -= 0.25
                 # Punish the AI less and less as its ants approach the enemy's queen
                 valueOfState -= 0.005 * self.vectorDistance(ant.coords, enemyQueen.coords)
         
@@ -536,9 +451,7 @@ class AIPlayer(Player):
         # since it is the best move for the opponent, and therefore the worst move
         # for our AI
         if currentState.whoseTurn == self.playerId:
-            print ("max", valueOfState)
             return valueOfState
-        print ("min", 1-valueOfState)
         return 1-valueOfState
         
     
