@@ -218,7 +218,7 @@ class AIPlayer(Player):
         #sort nodes from greatest to least
         sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'], reverse=True)
         
-        # throw away half the last half of the list to minimize the number of nodes
+        # throw away the last half of the list to minimize the number of nodes
         sortedNodeList = sortedNodeList[:(len(sortedNodeList)+1)/2]
         
         #holds a reference to the current best node to move to
@@ -300,7 +300,7 @@ class AIPlayer(Player):
         #sort nodes from least to greatest
         sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'])
         
-        # throw away half the last half of the list to minimize the number of nodes
+        # throw away the last half of the list to minimize the number of nodes
         sortedNodeList = sortedNodeList[:(len(sortedNodeList)+1)/2]
         
         #holds a reference to the current best node to move to
@@ -625,78 +625,4 @@ class AIPlayer(Player):
         #method templaste, not implemented
         pass
 
- 
-# ## UNIT TEST(S) 
-# # imports required for the unit test(s)
-# from GameState import *
-# from Inventory import *
-# from Location import *
-
-# # create a game board
-# board = [[Location((col, row)) for row in xrange(0,BOARD_LENGTH)] for col in xrange(0,BOARD_LENGTH)]
-
-# # create player 1's inventory
-# p1Inventory = Inventory(PLAYER_ONE, [], [], 0)
-
-# # Give the player a worker ant for move testing
-# p1Inventory.ants.append(Ant((0,0), WORKER, PLAYER_ONE))
-# # Make sure to give player a queen so enemy does not
-# # instantly win
-# p1Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_ONE))
-
-# # create player 2's inventory
-# p2Inventory = Inventory(PLAYER_TWO, [], [], 0)
-
-# # Make sure to give the enemy a queen so player does not
-# # instantly win
-# p2Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_TWO))
-
-# # create a neutral inventory (food!)
-# neutralInventory = Inventory(NEUTRAL, [], [], 0)
-
-# # create a basic game state
-# gameState = GameState(board, [p1Inventory, p2Inventory, neutralInventory], MENU_PHASE, PLAYER_ONE)
-
-# # create a move to move the player's WORKER to Location (0, 1)
-# move = Move(MOVE_ANT, [(0,0), (0,1)], None)
-
-# # Create the SeeSaw AI 
-# aiPlayer = AIPlayer(PLAYER_ONE)
-
-# # Provess the move and save the copy of the state after the move is made
-# newState = aiPlayer.processMove(gameState, move)
-
-# # verify that the ANT was moved to Location (0, 1)
-# if getAntAt(newState, (0,1)):
-    # # get the 'value' of the state resulting from making the move
-    # stateValue = aiPlayer.evaluateState(newState)
-    
-    # # check the value of the new state
-    # # note that minObjectiveDist defaults to 99
-    # # the value should be:
-    # #    NEUTRAL (0.5) minus (minObjectiveDist - 1) * 0.001
-    # #    0.5 - 0.098
-    # #    0.402
-    # if stateValue == 0.402:
-        # print "SeeSaw - Unit Test #1 Passed"
-    # else:
-        # print "[UT - MOVE_ANT_VALUE] Failure"        
-# else:
-    # print "[UT - MOVE_ANT] Failure"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        
