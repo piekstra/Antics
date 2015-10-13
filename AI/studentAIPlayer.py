@@ -17,7 +17,16 @@ from Move import Move
 from GameState import addCoords
 from AIPlayerUtils import *
 
+# representation of inf
 INFINITY = 9999
+                
+# establishing weights for the weighted linear equation
+queenSafetyWeight = 0.3
+
+# "max" values for determining how good a state is
+maxNumAnts = 98.0 # 100 square minus 2 queens
+maxDist = 18.0
+
 # a representation of a 'node' in the search tree
 treeNode = {
     # the Move that would be taken in the given state from the parent node
@@ -54,13 +63,36 @@ class AIPlayer(Player):
         super(AIPlayer,self).__init__(inputPlayerId, "Agent_Will_Robinson") 
 
         
-    ## TODO: comments
+    ##
+    # vectorDistance
+    # Description: Given two cartesian coordinates, determines the 
+    #   manhattan distance between them (assuming all moves cost 1)
+    #
+    # Parameters:
+    #   self - The object pointer
+    #   pos1 - The first position
+    #   pos2 - The second position
+    #
+    # Return: The manhattan distance
+    #
     def vectorDistance(self, pos1, pos2):
         return (abs(pos1[0] - pos2[0]) +
                     abs(pos1[1] - pos2[1]))
                     
     
-    ## TODO: comments
+    ##
+    # distClosestAnt
+    # Description: Determines the distance between a cartesian coordinate
+    #   and the coordinates of the enemy ant closest to it.
+    #
+    # Parameters:
+    #   self - The object pointer
+    #   currentState - The state to analyze
+    #   initialCoords - The positition to check enemy ant distances from
+    #
+    # Return: The minimum distance between initialCoords and the closest
+    #           enemy ant.
+    #
     def distClosestAnt(self, currentState, initialCoords):
         # get a list of the enemy player's ants
         closestAntDist = 999
@@ -69,15 +101,6 @@ class AIPlayer(Player):
             if tempAntDist < closestAntDist:
                 closestAntDist = tempAntDist
         return closestAntDist
-    
-    
-    ## TODO: comments
-    def dangerWillRobinson(self, currentState, initialCoords):
-        # if the closest enemy ant is more than 4 "steps" away, 
-        # the queen is considered safe
-        if self.distClosestAnt(currentState, initialCoords) <= 4:    
-            return True
-        return False
     
     
     ##
@@ -119,14 +142,29 @@ class AIPlayer(Player):
             bestNode = bestNode["parent_node"]
         return bestNode["move"]
 
-
-    ##TODO: comments
+    
+    ##
+    # createNode
+    # Description: Creates a node with values set based on parameters
+    #
+    # Parameters:
+    #   self - The object pointer
+    #   move - The move that leads to the resultingState
+    #   resultingState - The state that results from making the move
+    #   parent - The parent node of the node being created
+    #
+    # Returns: A new node with the values initialized using the parameters
+    #
     def createNode(self, move, resultingState, parent):
         # Create a new node using treeNode as a model
         newNode = treeNode.copy()
+        # set the move
         newNode["move"] = move
+        # set the state that results from making the move
         newNode["potential_state"] = resultingState
+        # set the value of the resulting state
         newNode["state_value"] = self.evaluateState(resultingState)
+        # store a reference to the parent of this node
         newNode["parent_node"] = parent
         return newNode
 
@@ -144,7 +182,6 @@ class AIPlayer(Player):
     #
     # Returns: the move which benefits the opposing player the least (alpha).
     #
-    ##
     def max_value(self, node, alpha, beta, currentDepth):
         # base case, maxDepth reached, return the value of the currentState
         if currentDepth == self.maxDepth:
@@ -157,15 +194,17 @@ class AIPlayer(Player):
         # loop through all legal moves for the currentState
         for move in listAllLegalMoves(state):
             # don't bother doing any move evaluations for the queen
-            # once she is no longer on a constr
+            # unless we need to build a worker (she is in the way!)
             if move.moveType == MOVE_ANT:
                 initialCoords = move.coordList[0]
-                if (getAntAt(state, initialCoords).type == QUEEN 
-                    and getConstrAt(state, initialCoords) is None):
-                    # check if the queen is in danger! otherwise do not evaluate or
-                    # expand the potential state
-                    if not self.dangerWillRobinson(state, initialCoords):
+                if ((getAntAt(state, initialCoords).type == QUEEN) and 
+                    len(state.inventories[state.whoseTurn].ants) >= 2):
                         continue
+            if move.moveType == BUILD:
+                # hacky way to speed up the code by forcing building workers
+                # over any other ant
+                if move.buildType != WORKER:
+                    continue
             # get the state that would result if the move is made
             resultingState = self.processMove(state, move)
             #create a newNode for the resulting state
@@ -221,7 +260,7 @@ class AIPlayer(Player):
     #   currentDepth - the current depth of the node from the initial node
     #
     # Returns: the move which benefits the opposing player the least (alpha).
-    ##
+    #
     def min_value(self, node, alpha, beta, currentDepth):
         # base case, maxDepth reached, return the value of the currentState
         if currentDepth == self.maxDepth:
@@ -234,15 +273,17 @@ class AIPlayer(Player):
         # loop through all legal moves for the currentState
         for move in listAllLegalMoves(state):
             # don't bother doing any move evaluations for the queen
-            # once she is no longer on a constr
+            # unless we need to build a worker (she is in the way!)
             if move.moveType == MOVE_ANT:
                 initialCoords = move.coordList[0]
-                if (getAntAt(state, initialCoords).type == QUEEN 
-                    and getConstrAt(state, initialCoords) is None):
-                    # check if the queen is in danger! otherwise do not evaluate or
-                    # expand the potential state
-                    if not self.dangerWillRobinson(state, initialCoords):
+                if ((getAntAt(state, initialCoords).type == QUEEN) and 
+                    len(state.inventories[state.whoseTurn].ants) >= 2):
                         continue
+            if move.moveType == BUILD:
+                # hacky way to speed up the code by forcing building workers
+                # over any other ant
+                if move.buildType != WORKER:
+                    continue
             # get the state that would result if the move is made
             resultingState = self.processMove(state, move)
             #create a newNode for the resulting state
@@ -410,35 +451,28 @@ class AIPlayer(Player):
         valueOfState = 0.5        
             
         # hurting the enemy queen is a very good state to be in
-        valueOfState += 0.050 * (UNIT_STATS[QUEEN][HEALTH] - enemyQueen.health)
+        valueOfState += 0.025 * (UNIT_STATS[QUEEN][HEALTH] - enemyQueen.health)
         
         # keeps track of the number of ants the player has besides the queen
-        numNonQueenAnts = 0            
+        numNonQueenAnts = 0   
+        enemyDistFromQueen = maxDist         
         
         # loop through the player's ants and handle rewards or punishments
         # based on whether they are workers or attackers
         for ant in playerInv.ants:
             if ant.type == QUEEN:
-                # Punish the AI severely for leaving the queen on a constr
-                if getConstrAt(currentState, ant.coords) is not None:      
-                    valueOfState -= 0.1
-                    continue
-                # determine the distance from the queen to the closest enemy ant
-                dist = self.distClosestAnt(currentState, ant.coords)
-                # if the enemy is too close, punish the AI for not moving the queen away
-                if dist <= 4:
-                    valueOfState -= dist*0.02
+                enemyDistFromQueen = self.distClosestAnt(currentState, ant.coords)
+                queenSafety = enemyDistFromQueen / maxDist
+                valueOfState += queenSafety * queenSafetyWeight
             else:
                 numNonQueenAnts += 1
-                if numNonQueenAnts < 2:                    
-                    # Reward the AI for having one ant other than the queen
-                    valueOfState += 0.25
-                else:
-                    # punish the AI for having more than 1 ant besides the queen
-                    valueOfState -= 0.25
                 # Punish the AI less and less as its ants approach the enemy's queen
                 valueOfState -= 0.005 * self.vectorDistance(ant.coords, enemyQueen.coords)
-        
+                
+        # punish AI for having no attack ants
+        if numNonQueenAnts == 0:
+            valueOfState -= 0.2
+            
         # ensure that 0.0 is a loss and 1.0 is a win ONLY
         if valueOfState < 0.0:
             valueOfState = 0.001 + (valueOfState * 0.0001)
@@ -465,7 +499,7 @@ class AIPlayer(Player):
     #coordinates (from their side of the board) that represent Locations 
     #to place the anthill and 9 grass pieces. In setup phase 2, the player 
     #will again be passed the state and needs to return a list of 2 tuple
-    #coordinates (on their opponent’s side of the board) which represent
+    #coordinates (on their opponent?s side of the board) which represent
     #Locations to place the food sources. This is all that is necessary to 
     #complete the setup phases.
     #
@@ -473,9 +507,9 @@ class AIPlayer(Player):
     #   currentState - The current state of the game at the time the Game is 
     #       requesting a placement from the player.(GameState)
     #
-    #Return: If setup phase 1: list of ten 2-tuples of ints -> [(x1,y1), (x2,y2),…,(x10,y10)]
+    #Return: If setup phase 1: list of ten 2-tuples of ints -> [(x1,y1), (x2,y2),?,(x10,y10)]
     #       If setup phase 2: list of two 2-tuples of ints -> [(x1,y1), (x2,y2)]
-    ##
+    #
     def getPlacement(self, currentState):
         numToPlace = 0
         #implemented by students to return their next move
@@ -536,7 +570,7 @@ class AIPlayer(Player):
     #       requesting a move from the player.(GameState)   
     #
     #Return: Move(moveType [int], coordList [list of 2-tuples of ints], buildType [int]
-    ##
+    #
     def getMove(self, currentState):
         # save our id
         self.playerId = currentState.whoseTurn
@@ -643,7 +677,6 @@ class AIPlayer(Player):
         # print "[UT - MOVE_ANT_VALUE] Failure"        
 # else:
     # print "[UT - MOVE_ANT] Failure"
-
 
 
 
