@@ -218,6 +218,9 @@ class AIPlayer(Player):
         #sort nodes from greatest to least
         sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'], reverse=True)
         
+        # throw away half the last half of the list to minimize the number of nodes
+        sortedNodeList = sortedNodeList[:(len(sortedNodeList)+1)/2]
+        
         #holds a reference to the current best node to move to
         bestValNode = None
                 
@@ -296,7 +299,10 @@ class AIPlayer(Player):
             
         #sort nodes from least to greatest
         sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'])
-
+        
+        # throw away half the last half of the list to minimize the number of nodes
+        sortedNodeList = sortedNodeList[:(len(sortedNodeList)+1)/2]
+        
         #holds a reference to the current best node to move to
         bestValNode = None
         
