@@ -471,14 +471,11 @@ class AIPlayer(Player):
                 queenSafety = enemyDistFromQueen / maxDist
                 valueOfState += queenSafety * queenSafetyWeight
             else:
+                valueOfState += 0.005
                 numNonQueenAnts += 1
                 # Punish the AI less and less as its ants approach the enemy's queen
                 valueOfState -= 0.005 * self.vectorDistance(ant.coords, enemyQueen.coords)
-                
-        # punish AI for having no attack ants
-        if numNonQueenAnts == 0:
-            valueOfState -= 0.2
-            
+                            
         # ensure that 0.0 is a loss and 1.0 is a win ONLY
         if valueOfState < 0.0:
             valueOfState = 0.001 + (valueOfState * 0.0001)
