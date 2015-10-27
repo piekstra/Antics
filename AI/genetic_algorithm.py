@@ -17,22 +17,12 @@ from Move import Move
 from GameState import addCoords
 from AIPlayerUtils import *
 
-# representation of inf
-INFINITY = 9999
-
 # gene random number range
 GENE_RANGE = 1000
 MUTATION_THRESHOLD = 0.1
 
-POPULATION_SIZE = 4
-GAMES_PER_GENE = 4
-                
-# establishing weights for the weighted linear equation
-queenSafetyWeight = 0.3
-
-# "max" values for determining how good a state is
-maxNumAnts = 98.0 # 100 square minus 2 queens
-maxDist = 18.0
+POPULATION_SIZE = 10
+GAMES_PER_GENE = 10
 
 
 # a representation of a 'node' in the search tree
@@ -215,258 +205,24 @@ class AIPlayer(Player):
     def vectorDistance(self, pos1, pos2):
         return (abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1]))
                     
-    
-    ##
-    # distClosestAnt
-    # Description: Determines the distance between a cartesian coordinate
-    #   and the coordinates of the enemy ant closest to it.
-    #
-    # Parameters:
-    #   self - The object pointer
-    #   currentState - The state to analyze
-    #   initialCoords - The positition to check enemy ant distances from
-    #
-    # Return: The minimum distance between initialCoords and the closest
-    #           enemy ant.
-    #
-    def distClosestAnt(self, currentState, initialCoords):
-        # get a list of the enemy player's ants
-        closestAntDist = 999
-        for ant in currentState.inventories[(currentState.whoseTurn+1)%2].ants:
-            tempAntDist = self.vectorDistance(ant.coords, initialCoords)
-            if tempAntDist < closestAntDist:
-                closestAntDist = tempAntDist
-        return closestAntDist
-    
-    
-    ##
-    # evaluateNodes
-    # Description: The evaluateNodes method evaluates a list of nodes
-    # and determines their overall evaluation score.
-    #
-    # Parameters:
-    #   self - The object pointer
-    #   nodes - The list of nodes to evaluate
-    #
-    # Return: An overall evaluation score of the list of nodes
-    #
-    def evaluateNodes(self, nodes):
-        # holds the greatest state_value in the list of nodes
-        bestValue = 0.0
-        # look through the nodes and find the greatest state_value
-        for node in nodes:
-            if node["state_value"] > bestValue:
-                bestValue = node["state_value"]
-        # return the greatest state_value
-        return bestValue
-
-        
-    ##
-    # alpha_beta_search
-    # Description: use minimax with alpha beta pruning to determine what move to make
-    #
-    # Parameters:
-    #   self - the object pointer
-    #   node - the initial node, before any moves are explored
-    #
-    # Returns: the move which benefits the opposing player the least.
-    #
-    ##
-    def alpha_beta_search(self, node):
-        bestNode = self.max_value(node, -INFINITY, INFINITY, 0)
-        while bestNode["parent_node"]["parent_node"] is not None:
-            bestNode = bestNode["parent_node"]
-        return bestNode["move"]
-
-    
-    ##
-    # createNode
-    # Description: Creates a node with values set based on parameters
-    #
-    # Parameters:
-    #   self - The object pointer
-    #   move - The move that leads to the resultingState
-    #   resultingState - The state that results from making the move
-    #   parent - The parent node of the node being created
-    #
-    # Returns: A new node with the values initialized using the parameters
-    #
-    def createNode(self, move, resultingState, parent):
-        # Create a new node using treeNode as a model
-        newNode = treeNode.copy()
-        # set the move
-        newNode["move"] = move
-        # set the state that results from making the move
-        newNode["potential_state"] = resultingState
-        # set the value of the resulting state
-        newNode["state_value"] = self.evaluateState(resultingState)
-        # store a reference to the parent of this node
-        newNode["parent_node"] = parent
-        return newNode
-
-
-    ##
-    # max_value
-    # Description: returns the best move our player can make from the current state
-    #
-    # Parameters:
-    #   self - the object pointer
-    #   node - the current node, before any moves are explored
-    #   alpha - the alpha value, the value of our best move
-    #   beta - the value of the opponent's best move
-    #   currentDepth - the current depth of the node from the initial node
-    #
-    # Returns: the move which benefits the opposing player the least (alpha).
-    #
-    def max_value(self, node, alpha, beta, currentDepth):
-        # base case, maxDepth reached, return the value of the currentState
-        if currentDepth == self.maxDepth:
-            return node
-        state = node["potential_state"]
-        v = -INFINITY
-
-        # holds a list of nodes reachable from the currentState
-        nodeList = []
-        # loop through all legal moves for the currentState
-        for move in listAllLegalMoves(state):
-            # don't bother doing any move evaluations for the queen
-            # unless we need to build a worker (she is in the way!)
-            if move.moveType == MOVE_ANT:
-                initialCoords = move.coordList[0]
-                if ((getAntAt(state, initialCoords).type == QUEEN) and 
-                    len(state.inventories[state.whoseTurn].ants) >= 2):
-                        continue
-            if move.moveType == BUILD:
-                # hacky way to speed up the code by forcing building workers
-                # over any other ant
-                if move.buildType != WORKER:
-                    continue
-            # get the state that would result if the move is made
-            resultingState = self.processMove(state, move)
-            #create a newNode for the resulting state
-            newNode = self.createNode(move, resultingState, node)
-            # if a goal state has been found, stop evaluating other branches
-            if newNode["state_value"] == 1.0:
-                #we have a goal state, no alpha_beta evaluation is needed
-                return newNode
-            nodeList.append(newNode)
-
-        #sort nodes from greatest to least
-        sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'], reverse=True)
-        
-        # throw away the last half of the list to minimize the number of nodes
-        sortedNodeList = sortedNodeList[:(len(sortedNodeList)+1)/2]
-        
-        #holds a reference to the current best node to move to
-        bestValNode = None
-                
-        #if it is our players turn
-        if (self.playerId == state.whoseTurn):
-            for tempNode in sortedNodeList:
-                maxValNode = self.max_value(tempNode, alpha, beta, currentDepth+1)
-                #if it's our turn and we're in max_value, stay in max_value
-                if v < maxValNode["state_value"]:
-                        bestValNode = maxValNode
-                        v = maxValNode["state_value"]
-                if v >= beta:
-                    return maxValNode
-                alpha = max(alpha, v)
-        #else it is the opponents player turn
-        else:
-            sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'])
-            for tempNode in sortedNodeList:
-                maxValNode = self.min_value(tempNode, alpha, beta, currentDepth+1)
-                #if it's opponent's turn and they're in max_value, to toggle to min_value
-                if v < maxValNode["state_value"]:
-                       bestValNode = maxValNode
-                       v = maxValNode["state_value"]
-                if v >= beta:
-                    return maxValNode
-                alpha = max(alpha, v)
-
-        return bestValNode
-
-
-    ##
-    # min_value
-    # Description: returns the best move our opponent can make from the current state
-    #
-    # Parameters:
-    #   self - the object pointer
-    #   node - the current node, before any moves are explored
-    #   alpha - the alpha value, the value of our best move
-    #   beta - the value of the opponent's best move
-    #   currentDepth - the current depth of the node from the initial node
-    #
-    # Returns: the move which benefits the opposing player the least (alpha).
-    #
-    def min_value(self, node, alpha, beta, currentDepth):
-        # base case, maxDepth reached, return the value of the currentState
-        if currentDepth == self.maxDepth:
-            return node
-        state = node["potential_state"]
-        v = INFINITY
-
-        # holds a list of nodes reachable from the currentState
-        nodeList = []
-        # loop through all legal moves for the currentState
-        for move in listAllLegalMoves(state):
-            # don't bother doing any move evaluations for the queen
-            # unless we need to build a worker (she is in the way!)
-            if move.moveType == MOVE_ANT:
-                initialCoords = move.coordList[0]
-                if ((getAntAt(state, initialCoords).type == QUEEN) and 
-                    len(state.inventories[state.whoseTurn].ants) >= 2):
-                        continue
-            if move.moveType == BUILD:
-                # hacky way to speed up the code by forcing building workers
-                # over any other ant
-                if move.buildType != WORKER:
-                    continue
-            # get the state that would result if the move is made
-            resultingState = self.processMove(state, move)
-            #create a newNode for the resulting state
-            newNode = self.createNode(move, resultingState, node)
-            # if a goal state has been found, stop evaluating other branches
-            if newNode["state_value"] == 0.0:
-                #we have a goal state, no alpha_beta evaluation is needed
-                return newNode
-            nodeList.append(newNode)
             
-        #sort nodes from least to greatest
-        sortedNodeList = sorted(nodeList, key=lambda k: k['state_value'])
-        
-        # throw away the last half of the list to minimize the number of nodes
-        sortedNodeList = sortedNodeList[:(len(sortedNodeList)+1)/2]
-        
-        #holds a reference to the current best node to move to
-        bestValNode = None
-        
-        #if it is our players turn
-        if (self.playerId == state.whoseTurn):
-            for tempNode in sortedNodeList:
-                minValNode = self.max_value(tempNode, alpha, beta, currentDepth+1)
-                #if it's our turn and we're in max_value, stay in max_value
-                if v > minValNode["state_value"]:
-                        bestValNode = minValNode
-                        v = minValNode["state_value"]
-                if v <= alpha:
-                    return minValNode
-                beta = min(beta, v)
-        #else it is the opponents player turn
-        else:
-            for tempNode in sortedNodeList:
-                minValNode = self.min_value(tempNode, alpha, beta, currentDepth+1)
-                #if it's opponent's turn and they're in max_value, to toggle to min_value
-                if v > minValNode["state_value"]:
-                       bestValNode = minValNode
-                       v = minValNode["state_value"]
-                if v <= alpha:
-                    return minValNode
-                beta = min(beta, v)
-
-        return bestValNode
-    
+    ## TODO
+    def getBestMove(self, currentState):
+        # holds the best move
+        bestMove = None
+        # holds the value of the best move
+        bestMoveVal = 0.0
+        # loop through all legal moves for the currentState
+        for move in listAllLegalMoves(currentState):
+            # get the value of the state that would result if the move is made
+            resultingStateVal = self.evaluateState(self.processMove(currentState, move))
+            if resultingStateVal == 1.0:
+                return move
+            if resultingStateVal > bestMoveVal:
+                bestMoveVal = resultingStateVal
+                bestMove = move
+        return bestMove
+           
     
     ##
     # processMove
@@ -557,7 +313,7 @@ class AIPlayer(Player):
     
     
     ##
-    # evaluateState
+    # evaluateevaluateState
     # Description: The evaluateState method looks at a state and
     # assigns a value to the state based on how well the game is
     # going for the current player
@@ -590,42 +346,26 @@ class AIPlayer(Player):
             return 1.0
         
         # initial state value is neutral ( no player is winning or losing )
-        valueOfState = 0.5        
-            
+        valueOfState = 0.5       
+        
         # hurting the enemy queen is a very good state to be in
         valueOfState += 0.025 * (UNIT_STATS[QUEEN][HEALTH] - enemyQueen.health)
-        
-        # keeps track of the number of ants the player has besides the queen
-        numNonQueenAnts = 0   
-        enemyDistFromQueen = maxDist         
-        
+                
         # loop through the player's ants and handle rewards or punishments
         # based on whether they are workers or attackers
         for ant in playerInv.ants:
-            if ant.type == QUEEN:
-                enemyDistFromQueen = self.distClosestAnt(currentState, ant.coords)
-                queenSafety = enemyDistFromQueen / maxDist
-                valueOfState += queenSafety * queenSafetyWeight
+            if ant.type == QUEEN:     
+                # if the queen is on the hill, this is bad
+                if ant.coords == self.hillCoords:
+                    return 0.001
             else:
+                # Reward the AI for having ants other than the queen
                 valueOfState += 0.01
-                numNonQueenAnts += 1
                 # Punish the AI less and less as its ants approach the enemy's queen
-                valueOfState -= 0.005 * self.vectorDistance(ant.coords, enemyQueen.coords)
-                            
-        # ensure that 0.0 is a loss and 1.0 is a win ONLY
-        if valueOfState < 0.0:
-            valueOfState = 0.001 + (valueOfState * 0.0001)
-        if valueOfState > 1.0:
-            valueOfState =  0.999
+                valueOfState -= 0.005 * self.vectorDistance(ant.coords, enemyQueen.coords) 
             
         # return the value of the currentState
-        # Value if our turn, otherwise 1-value if opponents turn
-        # Doing 1-value is the equivalent of looking at the min value
-        # since it is the best move for the opponent, and therefore the worst move
-        # for our AI
-        if currentState.whoseTurn == self.playerId:
-            return valueOfState
-        return 1-valueOfState
+        return valueOfState
         
     
     ##
@@ -654,6 +394,8 @@ class AIPlayer(Player):
         if currentState.phase == SETUP_PHASE_1:    
             # get a list of coordinates for placement
             coordList = self.geneToCoords(self.genes1[self.curGeneIdx], 0)
+            # save the hill coords
+            self.hillCoords = coordList[0]
             # return the first 11 coordinates (tunnel+hill+grass)
             return coordList[:11]
         # place stuff on opponent's side
@@ -698,14 +440,12 @@ class AIPlayer(Player):
     #
     def getMove(self, currentState):
         # print the state as ascii on the first move
-        if self.firstMove:            
+        if self.firstMove:                      
             asciiPrintState(currentState)
             self.firstMove = False
         # save our id
         self.playerId = currentState.whoseTurn
-        #create the initial node to analyze
-        initNode = self.createNode(None, currentState, None)
-        return self.alpha_beta_search(initNode)
+        return self.getBestMove(currentState)
     
     
     ##
@@ -741,7 +481,7 @@ class AIPlayer(Player):
     #Parameters:
     #   hasWon - True if the player has won the game, False if the player lost. (Boolean)
     #
-    def registerWin(self, hasWon):        
+    def registerWin(self, hasWon):
         # increment the number of completed games
         self.gamesPlayed += 1
         
