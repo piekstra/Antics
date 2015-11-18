@@ -172,7 +172,7 @@ class AIPlayer(Player):
         
     ##
     # geneToCoords
-    # Description: very pretty way to concert a gene into a list of coordinates
+    # Description: very pretty way to convert a gene into a list of coordinates
     #   linearly assigns a coordinate to each index in the gene
     #   sorts the gene by the values from least to greatest
     #   returns the list of coordinates that are associated with the sorted gene
