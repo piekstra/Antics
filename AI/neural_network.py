@@ -37,14 +37,21 @@ class AIPlayer(Player):
     #   inputPlayerId - The id to give the new player (int)
     ##
     def __init__(self, inputPlayerId):
-        # a depth limit for the search algorithm
-        self.maxDepth = 1
+        # learning rate of the neural network
+        self.alpha = 0.8
         
+        # the constant bias value
+        self.bias = 1.0
+        
+        # initialize the input array values
+        self.neuralNetInput = [0.0]*7
+    
         # initialize the hidden layer weight matrix (7 x 12)
         self.hiddenLayerWeights = [[1.0]*12 for _ in range(7)]
         
-        # initialize the output layer weight matrix (12 x 1)
-        self.outputLayerWeights = [[1.0] for _ in range(12)]
+        # initialize the output layer weight matrix (13 x 1)
+        # 13 is (number of hidden layer perceptrons + 1 for bias)
+        self.outputLayerWeights = [[1.0] for _ in range(13)]
         
         # initialize the hidden layer's perceptron ouputs (1 x 12)
         self.hiddenLayerOutputs =[[1.0]*12]
@@ -108,8 +115,19 @@ class AIPlayer(Player):
         bestMoveVal = 0.0
         # loop through all legal moves for the currentState
         for move in listAllLegalMoves(currentState):
-            # get the value of the state that would result if the move is made
-            resultingStateVal = self.evaluateState(self.processMove(currentState, move))
+            # get the state that would result if the move is made
+            potentialState = self.processMove(currentState, move)
+            # get the value of the resulting state via the evaluation function
+            resultingStateVal = self.evaluateState(potentialState)
+            # get the value of the resulting state via the neural network
+            neuralNetworkResult = self.theMatrix(self.mapStateToArray(potentialState))  
+            # network error
+            glitchInMatrix = resultingStateVal - neuralNetworkResult
+            smallError = abs(glitchInMatrix) < 0.03
+            print "Target: %.5f\nActual: %.5f\n%s-Error: %.5f\n" % (resultingStateVal, neuralNetworkResult, smallError, glitchInMatrix)
+            # perform backpropogation to teach the neural network
+            self.backpropogation(resultingStateVal, neuralNetworkResult)
+            
             if resultingStateVal == 1.0:
                 return move
             if resultingStateVal > bestMoveVal:
@@ -259,9 +277,10 @@ class AIPlayer(Player):
                 stateArray[5] = 1.0
 
         # set bias (constant)
-        stateArray[6] = 1.0
+        stateArray[6] = self.bias
         
-        print stateArray
+        # print stateArray
+        self.neuralNetInput = stateArray
         # return the array representation of the state
         return stateArray
         
@@ -288,12 +307,21 @@ class AIPlayer(Player):
         # note that state array becomes a 2D array
         # so that matrix mult works (it requires 2D arrays)
         hiddenLayerValues = self.gMatrixMult([stateArray], self.hiddenLayerWeights)
-        print "hidden layer values", hiddenLayerValues
+        
+        # add a bias value (constant) (now a 1x13)
+        hiddenLayerValues[0].append(self.bias)
+        
+        # save the hidden layer's outputs
+        self.hiddenLayerOutputs = hiddenLayerValues
+        # print "hidden layer values", hiddenLayerValues
         
         # mult hidden layer values x output layer weights
         outputLayerValues = self.gMatrixMult(hiddenLayerValues, self.outputLayerWeights)
-        print outputLayerValues[0][0]
         
+        # save the network's output
+        self.networkOutput = outputLayerValues[0][0]
+        
+        # print outputLayerValues[0][0]        
         return outputLayerValues[0][0]
     
     
@@ -305,10 +333,29 @@ class AIPlayer(Player):
         err = targetVal - actualVal        
         delta = actualVal*(1-actualVal)*err
         
-        # hidden layer perceptron errors
-        errs = map(lambda weight: weight*Delta, self.outputLayerWeights)
+        ## hidden layer perceptron errors
+        errs = [weight[0]*delta for weight in self.outputLayerWeights]
+        # print self.outputLayerWeights, self.hiddenLayerOutputs, errs
+        deltas = [b*(1-b)*errs[idx] for idx, b in enumerate(self.hiddenLayerOutputs[0])]
+                
+        ## 
+        # Adjust each weights in the network:  W_ij = W_ij + alpha * delta_j * x_i where:
+        # W_ij is the weight between nodes i and j
+        # alpha is a learning rate
+        # delta_j is the error term for node j
+        # x_i  is the input that the weight was applied to     
+        #        
+        ## output layer weights
+        self.outputLayerWeights = [[weight[0] + self.alpha*delta*self.hiddenLayerOutputs[0][idx]] for idx, weight in enumerate(self.outputLayerWeights)]
         
-        deltas = map(lambda b: b*(1-b)
+        ## hidden layer weights
+        for idx_i, row in enumerate(self.hiddenLayerWeights):
+            for idx_j, weight in enumerate(self.hiddenLayerWeights):
+                self.hiddenLayerWeights[idx_i][idx_j] += self.alpha*deltas[idx_j]*self.neuralNetInput[idx_i]
+    
+    
+    
+    
     
     
     ##
@@ -328,7 +375,6 @@ class AIPlayer(Player):
     # Direct win/losses are either a technical victory or regicide
     #
     def evaluateState(self, currentState):
-        self.theMatrix(self.mapStateToArray(currentState))
         # get a reference to the player's inventory
         playerInv = currentState.inventories[currentState.whoseTurn]
         # get a reference to the enemy player's inventory
@@ -494,56 +540,56 @@ class AIPlayer(Player):
         pass
         
 
-## UNIT TEST(S) 
-# imports required for the unit test(s)
-from GameState import *
-from Inventory import *
-from Location import *
+# ## UNIT TEST(S) 
+# # imports required for the unit test(s)
+# from GameState import *
+# from Inventory import *
+# from Location import *
 
-# create a game board
-board = [[Location((col, row)) for row in xrange(0,BOARD_LENGTH)] for col in xrange(0,BOARD_LENGTH)]
+# # create a game board
+# board = [[Location((col, row)) for row in xrange(0,BOARD_LENGTH)] for col in xrange(0,BOARD_LENGTH)]
 
-# create player 1's inventory
-p1Inventory = Inventory(PLAYER_ONE, [], [], 0)
+# # create player 1's inventory
+# p1Inventory = Inventory(PLAYER_ONE, [], [], 0)
 
-# Make sure to give player a queen so enemy does not
-# instantly win
-p1Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_ONE))
+# # Make sure to give player a queen so enemy does not
+# # instantly win
+# p1Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_ONE))
 
-# create player 2's inventory
-p2Inventory = Inventory(PLAYER_TWO, [], [], 0)
+# # create player 2's inventory
+# p2Inventory = Inventory(PLAYER_TWO, [], [], 0)
 
-# Make sure to give the enemy a queen so player does not
-# instantly win
-p2Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_TWO))
+# # Make sure to give the enemy a queen so player does not
+# # instantly win
+# p2Inventory.ants.append(Ant((1,1), QUEEN, PLAYER_TWO))
 
-# create a neutral inventory (food!)
-neutralInventory = Inventory(NEUTRAL, [], [], 0)
+# # create a neutral inventory (food!)
+# neutralInventory = Inventory(NEUTRAL, [], [], 0)
 
-# create a basic game state
-gameState = GameState(board, [p1Inventory, p2Inventory, neutralInventory], MENU_PHASE, PLAYER_ONE)
+# # create a basic game state
+# gameState = GameState(board, [p1Inventory, p2Inventory, neutralInventory], MENU_PHASE, PLAYER_ONE)
 
-# create a move to move the player's WORKER to Location (0, 1)
-move = Move(MOVE_ANT, [(0,0), (0,1)], None)
+# # create a move to move the player's WORKER to Location (0, 1)
+# move = Move(MOVE_ANT, [(0,0), (0,1)], None)
 
-# Create the SeeSaw AI 
-aiPlayer = AIPlayer(PLAYER_ONE)
+# # Create the SeeSaw AI 
+# aiPlayer = AIPlayer(PLAYER_ONE)
 
-inputMatrix = [[float("0."+str(x)) for x in range (1,8)]]
-hiddenLayerWeights = [[1]*12 for _ in range(7)]
-print inputMatrix
-print hiddenLayerWeights
-# mult input x hidden layer weights
-multResult = aiPlayer.matrixMult(inputMatrix, hiddenLayerWeights)
-print multResult
-# apply g function
-hiddenLayerValues = [[1/(1 + math.e**-el) for el in multResult[0]]]
-print hiddenLayerValues
-toOutputWeights = [[float("0."+str(x))] for x in range (1,13)]
-print toOutputWeights
-# mult hidden layer results x to-output weights
-multResult = aiPlayer.matrixMult(hiddenLayerValues, toOutputWeights)
-print multResult
-output = [[1/(1 + math.e**-el) for el in multResult[0]]]
-print output[0][0]
-#sys.exit(0)
+# inputMatrix = [[float("0."+str(x)) for x in range (1,8)]]
+# hiddenLayerWeights = [[1]*12 for _ in range(7)]
+# print inputMatrix
+# print hiddenLayerWeights
+# # mult input x hidden layer weights
+# multResult = aiPlayer.matrixMult(inputMatrix, hiddenLayerWeights)
+# print multResult
+# # apply g function
+# hiddenLayerValues = [[1/(1 + math.e**-el) for el in multResult[0]]]
+# print hiddenLayerValues
+# toOutputWeights = [[float("0."+str(x))] for x in range (1,13)]
+# print toOutputWeights
+# # mult hidden layer results x to-output weights
+# multResult = aiPlayer.matrixMult(hiddenLayerValues, toOutputWeights)
+# print multResult
+# output = [[1/(1 + math.e**-el) for el in multResult[0]]]
+# print output[0][0]
+# #sys.exit(0)
