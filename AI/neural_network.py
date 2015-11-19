@@ -280,14 +280,14 @@ class AIPlayer(Player):
         
         ## State Array Creation
         # create the array to represent the state (default all 0's)
-        stateArray = [0.0]*7
+        stateArray = []
         
         # queen on hill -> 0 or 1
-        stateArray[0] = int(playerQueen.coords == self.hillCoords)
+        stateArray.append(float(playerQueen.coords == self.hillCoords))
         
         # how many ants: number of non-queen ants / 2.0
         #   -> (0 0.5 1)
-        stateArray[1] = (len(playerInv.ants) - 1) / 2.0
+        stateArray.append((len(playerInv.ants) - 1) / 2.0)
         
         # distance from each non-queen ant to enemy queen
         # max distance is roughly 20 (by squares)
@@ -295,10 +295,14 @@ class AIPlayer(Player):
         # set default distances (in case ants don't exist)
         if enemyQueen is None:
             # if no enemy queen, default distances are 0
-            stateArray[2:4] = (0.0,0.0)       
+            stateArray.append(0.0)
+            stateArray.append(0.0)
+            stateArray.append(0.0)
+            stateArray.append(0.5)
         else:
             # if there is an enemy queen, default distances are 1
-            stateArray[2:4] = (1.0,1.0)
+            stateArray.append(1.0)
+            stateArray.append(1.0)
             
             # initial idx for the first non-queen ant's distance
             antDistanceIdx = 2
@@ -306,20 +310,25 @@ class AIPlayer(Player):
                 if ant != playerQueen:
                     stateArray[antDistanceIdx] = self.vectorDistance(ant.coords, enemyQueen.coords) / 20.0
                     antDistanceIdx += 1
+                    # just in case there are magically more than 2 non queen ants, break early
+                    if antDistanceIdx >= 4:
+                        break
             
             # enemy queen health 
             #   -> enemyQueen.health / 4
-            stateArray[4] = enemyQueen.health / float(UNIT_STATS[QUEEN][HEALTH])
+            stateArray.append(enemyQueen.health / float(UNIT_STATS[QUEEN][HEALTH]))
             
             # if player has lost, set the "win/loss" value to 0
             if playerQueen is None or enemyInv.foodCount >= 11:
-                stateArray[5] = 0.0
+                stateArray.append(0.0)
             # if player has won, set the "win/loss" value to 1
             elif enemyQueen is None or playerInv.foodCount >= 11:
-                stateArray[5] = 1.0
+                stateArray.append(1.0)
+            else:
+                stateArray.append(0.5)
 
         # set bias (constant)
-        stateArray[6] = self.bias
+        stateArray.append(self.bias)
         
         # print stateArray
         self.neuralNetInput = stateArray
