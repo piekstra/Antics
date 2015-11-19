@@ -39,6 +39,12 @@ class AIPlayer(Player):
     def __init__(self, inputPlayerId):
         # a depth limit for the search algorithm
         self.maxDepth = 1
+        
+        # initialize the hidden layer weight matrix (7 x 12)
+        self.hiddenLayerWeights = [[1.0]*12 for _ in range(7)]
+        
+        # initialize the output layer weight matrix (12 x 1)
+        self.outputLayerWeights = [[1.0] for _ in range(12)]
 
         # Neo - The 1.0 (One)
         super(AIPlayer,self).__init__(inputPlayerId, "Neo") 
@@ -79,7 +85,14 @@ class AIPlayer(Player):
     ## returns the transpose of the matrix
     def transpose(self, matrix):
         return [list(row) for row in zip(*matrix)]
-        
+    
+    
+    ## TODO
+    # applies g function to resulting matrix from mult
+    def gMatrixMult(self, matrix1, matrix2):
+        multResult = self.matrixMult(matrix1, matrix2)
+        return [[1/(1 + math.e**-el) for el in multResult[0]]]
+    
     
     ## TODO
     def getBestMove(self, currentState):
@@ -190,24 +203,61 @@ class AIPlayer(Player):
     ## 
     # TODO
     def mapStateToArray(self, state):
-        #stateArray = 
-        # 1. queen on hill -> 0 or 1
-        # 2. how many ants: numWorkers / 2.0 (0 0.5 1)
-        # 3. for each non-queen ant
-        #       max distance 20 -> number between 0 and 1 (distance/20)
-        # 4. enemy queen health -> enemyQueenHealth / 4
-        # 5. game won/loss 1 or 0 (win -> no enemy queen, or 11 food; loss-> no queen or enemy has 11 food)
-        # 6. Bias: constant value
+        # get a reference to the player's inventory
+        playerInv = state.inventories[state.whoseTurn]
+        # get a reference to the enemy player's inventory
+        enemyInv = state.inventories[(state.whoseTurn+1) % 2]
+        # get a reference to the enemy's queen
+        enemyQueen = enemyInv.getQueen()
+        # get a reference to the player's queen
+        playerQueen = playerInv.getQueen()
         
-        # array size: 6 for vars + 1 for bias
-        #   1 for #1 
-        #   1 for #2
-        #   2 for #3
-        #   1 for #4
-        #   1 for #5
-        #   1 for #6 BIAS
+        ## State Array Creation
+        # create the array to represent the state (default all 0's)
+        stateArray = [0.0]*7
         
-        return [0]*6
+        # queen on hill -> 0 or 1
+        stateArray[0] = int(playerQueen.coords == self.hillCoords)
+        
+        # how many ants: number of non-queen ants / 2.0
+        #   -> (0 0.5 1)
+        stateArray[1] = (len(playerInv.ants) - 1) / 2.0
+        
+        # distance from each non-queen ant to enemy queen
+        # max distance is roughly 20 (by squares)
+        #   float between 0 and 1 (distance/20)
+        # set default distances (in case ants don't exist)
+        if enemyQueen is None:
+            # if no enemy queen, default distances are 0
+            stateArray[2:4] = (0.0,0.0)       
+        else:
+            # if there is an enemy queen, default distances are 1
+            stateArray[2:4] = (1.0,1.0)
+            
+            # initial idx for the first non-queen ant's distance
+            antDistanceIdx = 2
+            for ant in playerInv.ants:
+                if ant != playerQueen:
+                    stateArray[antDistanceIdx] = self.vectorDistance(ant.coords, enemyQueen.coords) / 20.0
+                    antDistanceIdx += 1
+            
+            # enemy queen health 
+            #   -> enemyQueen.health / 4
+            stateArray[4] = enemyQueen.health / float(UNIT_STATS[QUEEN][HEALTH])
+            
+            # if player has lost, set the "win/loss" value to 0
+            if playerQueen is None or enemyInv.foodCount >= 11:
+                stateArray[5] = 0.0
+            # if player has won, set the "win/loss" value to 1
+            elif enemyQueen is None or playerInv.foodCount >= 11:
+                stateArray[5] = 1.0
+
+        # set bias (constant)
+        stateArray[6] = 1.0
+        
+        print stateArray
+        # return the array representation of the state
+        return stateArray
         
         
     ## 
@@ -227,25 +277,18 @@ class AIPlayer(Player):
     # where 0.0 is a loss and 1.0 is a victory and 0.5 is neutral
     # (neither winning nor losing)
     #
-    def theMatrix(self, state):
-        # 2x inputs = hidden layer
-        # 6 inputs -> 12 perceptrons in hidden layer
-        # 12*6
+    def theMatrix(self, stateArray):
+        # mult input x hidden layer weights
+        # note that state array becomes a 2D array
+        # so that matrix mult works (it requires 2D arrays)
+        hiddenLayerValues = self.gMatrixMult([stateArray], self.hiddenLayerWeights)
+        print "hidden layer values", hiddenLayerValues
         
-        # input: 1x7
-        # hidden layer matrix: 7x12 (6 inputs 1 bias by 12 perceptrons (2x6))      
-        # output layer matrix: 12x1 
-        rows = 7
-        cols = 12
-        matrix = [[1]*cols for _ in range(rows)]
+        # mult hidden layer values x output layer weights
+        outputLayerValues = self.gMatrixMult(hiddenLayerValues, self.outputLayerWeights)
+        print outputLayerValues[0][0]
         
-        # input 1x7 * hidden weights 7x12 = 1x12  
-        # magical g function on resulting 1x12 from above
-        #   literally just 1/(1 + math.e**-x) where x is array value ^
-        # 1x12 * 12x1
-        
-        neo = 1.0
-        return neo
+        return outputLayerValues[0][0]
     
     
     ##
@@ -264,7 +307,8 @@ class AIPlayer(Player):
     #
     # Direct win/losses are either a technical victory or regicide
     #
-    def evaluateState(self, currentState):        
+    def evaluateState(self, currentState):
+        self.theMatrix(self.mapStateToArray(currentState))
         # get a reference to the player's inventory
         playerInv = currentState.inventories[currentState.whoseTurn]
         # get a reference to the enemy player's inventory
