@@ -43,6 +43,21 @@ class AIPlayer(Player):
         # the constant bias value
         self.bias = 1.0
         
+        # keep track of the number of successful 10k consecutive
+        # acceptable results
+        self.acceptableResultsCount = 0
+        
+        # consecutive acceptable results streak number
+        self.acceptableStreak = 1000
+        
+        # initialize a list to determine how many consecutive 
+        # times the network produced an acceptable result
+        # (within 0.03  of actual)       
+        # a 0 means unacceptable, a 1 means acceptable
+        # summing the list and dividing by 100 provides an idea 
+        # of how acceptable the results are across the last 100 games
+        self.acceptableResults = [0]*self.acceptableStreak
+        
         # initialize the input array values
         self.neuralNetInput = [0.0]*7
     
@@ -120,11 +135,38 @@ class AIPlayer(Player):
             # get the value of the resulting state via the evaluation function
             resultingStateVal = self.evaluateState(potentialState)
             # get the value of the resulting state via the neural network
-            neuralNetworkResult = self.theMatrix(self.mapStateToArray(potentialState))  
+            neuralNetworkResult = self.theMatrix(self.mapStateToArray(potentialState))              
             # network error
             glitchInMatrix = resultingStateVal - neuralNetworkResult
-            smallError = abs(glitchInMatrix) < 0.03
-            print "Target: %.5f\nActual: %.5f\n%s-Error: %.5f\n" % (resultingStateVal, neuralNetworkResult, smallError, glitchInMatrix)
+            # determine whether the error was acceptable or not
+            acceptableError = abs(glitchInMatrix) < 0.03
+            # remove the last acceptable result from the list (far left)
+            self.acceptableResults.pop(0)
+            # append the latest acceptable result to the list (far right)            
+            self.acceptableResults.append(int(acceptableError))
+            
+            # if the last 10000 consecutive state evaluations were acceptable, 
+            # the network's results are stable
+            if sum(self.acceptableResults) == self.acceptableStreak:
+                self.acceptableResultsCount += 1
+                self.acceptableResults = [0]*self.acceptableStreak
+                # write weight matrices to file
+                with open("network_results.txt", 'a') as file:
+                    file.write("Hidden layer weights %d:\n" % self.acceptableResultsCount)
+                    for row in self.hiddenLayerWeights:
+                        for weight in row:
+                            file.write("%.6f\t" % weight)
+                        file.write("\n")
+                    file.write("\nOutput layer weights %d:\n" % self.acceptableResultsCount)
+                    for row in self.outputLayerWeights:
+                        for weight in row:
+                            file.write("%.6f\t" % weight)
+                        file.write("\n")
+                    file.write("\n")
+                
+                
+            
+            # print "Target: %.5f\nActual: %.5f\n%s-Error: %.5f\n" % (resultingStateVal, neuralNetworkResult, smallError, glitchInMatrix)
             # perform backpropogation to teach the neural network
             self.backpropogation(resultingStateVal, neuralNetworkResult)
             
