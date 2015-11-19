@@ -38,7 +38,7 @@ class AIPlayer(Player):
     ##
     def __init__(self, inputPlayerId):
         # learning rate of the neural network
-        self.alpha = 0.8
+        self.alpha = 4.0
         
         # the constant bias value
         self.bias = 1.0
@@ -151,7 +151,7 @@ class AIPlayer(Player):
                 self.acceptableResultsCount += 1
                 self.acceptableResults = [0]*self.acceptableStreak
                 # write weight matrices to file
-                with open("network_results.txt", 'a') as file:
+                with open("network_results_a4.txt", 'a') as file:
                     file.write("Hidden layer weights %d:\n" % self.acceptableResultsCount)
                     for row in self.hiddenLayerWeights:
                         for weight in row:
@@ -388,7 +388,7 @@ class AIPlayer(Player):
         errs = [weight[0]*delta for weight in self.outputLayerWeights]
         # print self.outputLayerWeights, self.hiddenLayerOutputs, errs
         deltas = [b*(1-b)*errs[idx] for idx, b in enumerate(self.hiddenLayerOutputs[0])]
-                
+        
         ## 
         # Adjust each weights in the network:  W_ij = W_ij + alpha * delta_j * x_i where:
         # W_ij is the weight between nodes i and j
@@ -401,13 +401,9 @@ class AIPlayer(Player):
         
         ## hidden layer weights
         for idx_i, row in enumerate(self.hiddenLayerWeights):
-            for idx_j, weight in enumerate(self.hiddenLayerWeights):
+            for idx_j, weight in enumerate(row):
                 self.hiddenLayerWeights[idx_i][idx_j] += self.alpha*deltas[idx_j]*self.neuralNetInput[idx_i]
-    
-    
-    
-    
-    
+        
     
     ##
     # evaluateevaluateState
