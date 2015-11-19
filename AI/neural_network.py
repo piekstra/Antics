@@ -45,6 +45,12 @@ class AIPlayer(Player):
         
         # initialize the output layer weight matrix (12 x 1)
         self.outputLayerWeights = [[1.0] for _ in range(12)]
+        
+        # initialize the hidden layer's perceptron ouputs (1 x 12)
+        self.hiddenLayerOutputs =[[1.0]*12]
+        
+        # initialize the neural network output
+        self.networkOutput = 0.0
 
         # Neo - The 1.0 (One)
         super(AIPlayer,self).__init__(inputPlayerId, "Neo") 
@@ -289,6 +295,20 @@ class AIPlayer(Player):
         print outputLayerValues[0][0]
         
         return outputLayerValues[0][0]
+    
+    
+    ## TODO
+    # targetVal from evaluateState
+    # actualVal from theMatrix (neural network)
+    def backpropogation(self, targetVal, actualVal):
+        # output perceptron error
+        err = targetVal - actualVal        
+        delta = actualVal*(1-actualVal)*err
+        
+        # hidden layer perceptron errors
+        errs = map(lambda weight: weight*Delta, self.outputLayerWeights)
+        
+        deltas = map(lambda b: b*(1-b)
     
     
     ##
