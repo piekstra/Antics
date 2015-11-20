@@ -38,7 +38,11 @@ class AIPlayer(Player):
     ##
     def __init__(self, inputPlayerId):
         # learning rate of the neural network
-        self.alpha = 4.0
+        self.alpha = 0.8
+        
+        # the file to write out matrices to when a streak
+        # of acceptable evaluations has occurred
+        self.matrixOutputFile = "network_results_a08.txt"
         
         # the constant bias value
         self.bias = 1.0
@@ -54,21 +58,37 @@ class AIPlayer(Player):
         # times the network produced an acceptable result
         # (within 0.03  of actual)       
         # a 0 means unacceptable, a 1 means acceptable
-        # summing the list and dividing by 100 provides an idea 
-        # of how acceptable the results are across the last 100 games
+        # if the sum of the list is equal to the acceptableStreak
+        # than the neural network is providing accurate evaluations
+        # on average
         self.acceptableResults = [0]*self.acceptableStreak
         
-        # initialize the input array values
+        # initialize the network's input array values (0.0 by default)
         self.neuralNetInput = [0.0]*7
     
         # initialize the hidden layer weight matrix (7 x 12)
-        self.hiddenLayerWeights = [[1.0]*12 for _ in range(7)]
+        # commented out when learning stage is complete
+        # self.hiddenLayerWeights = [[1.0]*12 for _ in range(7)]
         
+        # initialize the hidden layer's weights based on the learned values
+        self.hiddenLayerWeights = [
+            [3.200784, 3.200784, 3.200784, 3.200784, 3.200784, 3.200784, 3.200784, 3.200784, 3.200784, 3.200784, 3.200784, 3.200784], 
+            [0.309659, 0.309659, 0.309659, 0.309659, 0.309659, 0.309659, 0.309659, 0.309659, 0.309659, 0.309659, 0.309659, 0.309659], 
+            [0.129364, 0.129364, 0.129364, 0.129364, 0.129364, 0.129364, 0.129364, 0.129364, 0.129364, 0.129364, 0.129364, 0.129364], 
+            [0.155654, 0.155654, 0.155654, 0.155654, 0.155654, 0.155654, 0.155654, 0.155654, 0.155654, 0.155654, 0.155654, 0.155654], 
+            [0.244135, 0.244135, 0.244135, 0.244135, 0.244135, 0.244135, 0.244135, 0.244135, 0.244135, 0.244135, 0.244135, 0.244135], 
+            [0.010028, 0.010028, 0.010028, 0.010028, 0.010028, 0.010028, 0.010028, 0.010028, 0.010028, 0.010028, 0.010028, 0.010028], 
+            [-0.979944, -0.979944, -0.979944, -0.979944, -0.979944, -0.979944, -0.979944, -0.979944, -0.979944, -0.979944, -0.979944, -0.979944]]
+            
         # initialize the output layer weight matrix (13 x 1)
         # 13 is (number of hidden layer perceptrons + 1 for bias)
-        self.outputLayerWeights = [[1.0] for _ in range(13)]
+        # commented out when learning stage is complete
+        # self.outputLayerWeights = [[1.0] for _ in range(13)]
         
-        # initialize the hidden layer's perceptron ouputs (1 x 12)
+        # initialize the output layer's weights based on the learned values
+        self.outputLayerWeights = [[-0.891793], [-0.891793], [-0.891793], [-0.891793], [-0.891793], [-0.891793], [-0.891793], [-0.891793], [-0.891793], [-0.891793], [-0.891793], [-0.891793], [4.251797]]
+        
+        # initialize the hidden layer's perceptron outputs (1 x 12)
         self.hiddenLayerOutputs =[[1.0]*12]
         
         # initialize the neural network output
@@ -94,10 +114,36 @@ class AIPlayer(Player):
         return (abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1]))
     
 
-    ## MATRIX OPERATION FUNCTIONS TODO  
-    ## mult stuff
-    # matrix1 and matrix2 are BOTH 2D lists
-    # so a 1x7 is [[0,1,2,3,4,5,6]]
+    ## 
+    # matrixMult
+    # Description: Multiplies two matrices and returns the 
+    #   resulting matrix
+    #
+    # Parameters:
+    #   self - The object pointer
+    #   matrix1 - The first matrix
+    #   matrix2 - The second matrix
+    #
+    # Notes:
+    #   An n x m matrix has n rows and m columns
+    #
+    #   Both matrix1 and matrix2 should be 2D lists. The returned
+    #   matrix result will also be a 2D list.
+    #
+    #   Example1: 
+    #       multiplying a 1x3 by a 3x3 produces a 1x3
+    #       as follows:
+    #       [[1,2,3]] * [[1,1,1],[2,2,2],[0,1,2]] 
+    #           = [[5,8,11]]
+    #   
+    #   Example2: 
+    #       multiplying a 3x2 by a 2x2 produces a 3x2
+    #       as follows:
+    #       [[1,2],[2,1],[1,1]] * [[0,1],[1,2]] 
+    #           = [[2,5], [1,4], [1,3]]
+    #
+    # Return: The matrix resulting from multiplying matrix1 with matrix2
+    # 
     def matrixMult(self, matrix1, matrix2):
         multMatrix = []
         for row in matrix1:
@@ -111,6 +157,23 @@ class AIPlayer(Player):
         
     
     ## returns the transpose of the matrix
+    ## 
+    # transpose
+    # Description: Finds the transpose of a matrix
+    #
+    # Parameters:
+    #   self - The object pointer
+    #   matrix - The matrix to transpose
+    #   matrix2 - The second matrix
+    #
+    # Notes:
+    #   The transpose of a matrix is a new matrix where
+    #   the rows and columns are swapped
+    #
+    #   Example1: 
+    #       transpose([[1,1,1],[2,2,2],[3,3,3]])
+    #           = [[1,2,3],[1,2,3],[1,2,3]]
+    #
     def transpose(self, matrix):
         return [list(row) for row in zip(*matrix)]
     
@@ -132,8 +195,38 @@ class AIPlayer(Player):
         for move in listAllLegalMoves(currentState):
             # get the state that would result if the move is made
             potentialState = self.processMove(currentState, move)
+            
+            # get the value of the resulting state via the neural network
+            resultingStateVal = self.theMatrix(self.mapStateToArray(potentialState))  
+            
+            
+            # if the resulting state is a goal state (win) just return the move
+            if resultingStateVal == 1.0:
+                return move
+            # otherwise keep track of the best move so far and it's value
+            if resultingStateVal > bestMoveVal:
+                bestMoveVal = resultingStateVal
+                bestMove = move
+        return bestMove
+        
+        
+    ## TODO
+    def getBestMoveWithPropogation(self, currentState):
+        # holds the best move
+        bestMove = None
+        # holds the value of the best move
+        bestMoveVal = 0.0
+        # loop through all legal moves for the currentState
+        for move in listAllLegalMoves(currentState):
+            # get the state that would result if the move is made
+            potentialState = self.processMove(currentState, move)
+            
+            # All of the commented out sections below are because the network
+            # has been trained and is no longer learning
+            resultingStateVal = self.theMatrix(self.mapStateToArray(potentialState))       
+            
             # get the value of the resulting state via the evaluation function
-            resultingStateVal = self.evaluateState(potentialState)
+            resultingStateVal = self.theMatrix(self.mapStateToArray(potentialState))  #self.evaluateState(potentialState)
             # get the value of the resulting state via the neural network
             neuralNetworkResult = self.theMatrix(self.mapStateToArray(potentialState))              
             # network error
@@ -151,7 +244,7 @@ class AIPlayer(Player):
                 self.acceptableResultsCount += 1
                 self.acceptableResults = [0]*self.acceptableStreak
                 # write weight matrices to file
-                with open("network_results_a4.txt", 'a') as file:
+                with open(self.matrixOutputFile, 'a') as file:
                     file.write("Hidden layer weights %d:\n" % self.acceptableResultsCount)
                     for row in self.hiddenLayerWeights:
                         for weight in row:
@@ -162,11 +255,8 @@ class AIPlayer(Player):
                         for weight in row:
                             file.write("%.6f\t" % weight)
                         file.write("\n")
-                    file.write("\n")
-                
-                
+                    file.write("\n")  
             
-            # print "Target: %.5f\nActual: %.5f\n%s-Error: %.5f\n" % (resultingStateVal, neuralNetworkResult, smallError, glitchInMatrix)
             # perform backpropogation to teach the neural network
             self.backpropogation(resultingStateVal, neuralNetworkResult)
             
@@ -587,7 +677,7 @@ class AIPlayer(Player):
         pass
         
 
-# ## UNIT TEST(S) 
+# ## UNIT TEST(S)
 # # imports required for the unit test(s)
 # from GameState import *
 # from Inventory import *
