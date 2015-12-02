@@ -56,7 +56,7 @@ class AIPlayer(Player):
         self.td_alpha_change_amount = 0.1
 
         # set the unique identifier for the AI and its utilities file (based on the alpha change values)
-        self.AIID = str(self.td_alpha_change_rate) + '_' + str(self.td_alpha_change_amount).replace('.', '')+ "_LS"
+        self.AIID = str(self.td_alpha_change_rate) + '_' + str(self.td_alpha_change_amount).replace('.', '')+ "_ASB"
         
         #file name constant
         self.utilityFile = "utility." + self.AIID 
@@ -115,22 +115,10 @@ class AIPlayer(Player):
         
         #initialize the compressed state dictionary with default values
         compressedState = {}
-                
-        # keep track of the number of enemy ants
-        compressedState["enemy_ants"] = len(enemyInv.ants)
-                
-        # keep track of the number of player ants
-        compressedState["player_ants"] = len(playerInv.ants)
-
-        # keep track of how much food the player has
-        compressedState["player_food_count"] = playerInv.foodCount
-
-        # keep track of how much food the enemy has
-        compressedState["enemy_food_count"] = enemyInv.foodCount
         
-        # keep track of the number of ants for dictionary reference
+        #keep track of the number of ants for dictionary reference
         antCount = 0
-        
+
         # check each of the player's ants
         for ant in playerInv.ants:
             if ant.type == QUEEN:
@@ -152,17 +140,17 @@ class AIPlayer(Player):
                 #set the existence variable to true
                 antCount += 1
                 
-                antID = "ant" + str(antCount)
-                compressedState[antID] = {}
-                compressedState[antID]["exists"] = True
+                workerID = "ant" + str(antCount)
+                compressedState[workerID] = {}
+                compressedState[workerID]["exists"] = True
                 
                 #store the distance from the worker to enemy queen
                 if enemyQueen:
-                    compressedState[antID]["distance"] = (abs(ant.coords[0] - enemyQueen.coords[0]) +
+                    compressedState[workerID]["distance"] = (abs(ant.coords[0] - enemyQueen.coords[0]) +
                                                           abs(ant.coords[1] - enemyQueen.coords[1]))
                 else:
                     #if enemy queen does not exist, default to zero
-                    compressedState[antID]["distance"] = 0
+                    compressedState[workerID]["distance"] = 0
 
         if enemyQueen:
             compressedState["enemy_queen"] = {}
@@ -170,9 +158,13 @@ class AIPlayer(Player):
             compressedState["enemy_queen"]["exists"] = True
             # keep track of health of enemy queen
             compressedState["enemy_queen"]["health"] = enemyQueen.health
-        if compressedState["enemy_ants"] <= 1 or compressedState["player_food_count"] >= 11:
+        else:
             compressedState["won"] = True
-        elif compressedState["player_ants"] <= 1 or compressedState["enemy_food_count"] >= 11:
+            # #keep track of existence of enemy queen
+            # compressedState["enemy_queen"]["exists"] = False
+            # # keep track of health of enemy queen
+            # compressedState["enemy_queen"]["health"] = 0
+        if playerQueen is None or antCount == 0:
             compressedState["lost"] = True
             
         # return the evaluation score of the state
@@ -189,7 +181,7 @@ class AIPlayer(Player):
     #   compressedState - the compressed state dictionary
     #
     # Returns:
-    #   A reward value between -1.0 and 1.0 inclusive
+    #   The reward value of the state
     ##
     def rewardFunction(self, compressedState):
         if "won" in compressedState:
@@ -197,7 +189,7 @@ class AIPlayer(Player):
         elif "lost" in compressedState:
             return -1.0
         return -0.01
-            
+        
     
     ##
     # flattenDict
