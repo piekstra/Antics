@@ -6,7 +6,7 @@
 #
 # Author(s): Caleb Piekstra, Chandler Underwood
 #
-import random, time, string, argparse, math, sys, types, pickle
+import random, time, string, argparse, math, sys, types, pickle, collections
 import os.path as filePath
 from Player import *
 from Constants import *
@@ -47,7 +47,7 @@ class AIPlayer(Player):
         self.utilityDict = {}
         
         #  discount factor for the TD-Learning algorithm
-        self.td_lambda = 0.8
+        self.td_lambda = 0.9
         
         # the learning rate for the TD-Learning algorithm
         self.td_alpha = 0.99
@@ -93,35 +93,22 @@ class AIPlayer(Player):
         playerInv = state.inventories[state.whoseTurn]
         enemyInv = state.inventories[1 - state.whoseTurn]
         enemyQueen = enemyInv.getQueen()
+        playerQueen = playerInv.getQueen()
         
         #initialize the compressed state dictionary with default values
-        compressedState = {
-            "queen": {
-                "exists": False,
-                "on_hill": True
-            },
-            "worker1": {
-                "exists": False,
-                "distance": 20
-            },
-            "worker2": {
-                "exists": False,
-                "distance": 20
-            },
-            "enemy_queen": {
-                "exists": True,
-                "health": 4
-            }
-        }
+        compressedState = {}
         
-        #keep track of the number of workers for dictionary reference
-        workerCount = 0
+        #keep track of the number of ants for dictionary reference
+        antCount = 0
 
         # check each of the player's ants
         for ant in playerInv.ants:
             if ant.type == QUEEN:
+                compressedState["queen"] = {}
                 # keep track of if the queen exists and is on hill
                 compressedState["queen"]["exists"] = True
+                # keep track of the queen's health
+                compressedState["queen"]["health"] = playerQueen.health
                 
                 #whether or not the queen is on the hill
                 if ant.coords == self.hillCoords:
@@ -129,17 +116,14 @@ class AIPlayer(Player):
                 else:
                     compressedState["queen"]["on_hill"] = False
             
-            #for each worker
-            elif ant.type == WORKER:
+            #for each non-queen ant
+            else:
             
                 #set the existence variable to true
-                workerCount += 1
+                antCount += 1
                 
-                #building more than 2 worker ants is a bug, and unnecessary for our strategy
-                if workerCount >= 3:
-                    continue
-                    
-                workerID = "worker" + str(workerCount)
+                workerID = "ant" + str(antCount)
+                compressedState[workerID] = {}
                 compressedState[workerID]["exists"] = True
                 
                 #store the distance from the worker to enemy queen
@@ -151,16 +135,20 @@ class AIPlayer(Player):
                     compressedState[workerID]["distance"] = 0
 
         if enemyQueen:
+            compressedState["enemy_queen"] = {}
             #keep track of existence of enemy queen
             compressedState["enemy_queen"]["exists"] = True
             # keep track of health of enemy queen
             compressedState["enemy_queen"]["health"] = enemyQueen.health
         else:
-            #keep track of existence of enemy queen
-            compressedState["enemy_queen"]["exists"] = False
-            # keep track of health of enemy queen
-            compressedState["enemy_queen"]["health"] = 0
-                  
+            compressedState["won"] = True
+            # #keep track of existence of enemy queen
+            # compressedState["enemy_queen"]["exists"] = False
+            # # keep track of health of enemy queen
+            # compressedState["enemy_queen"]["health"] = 0
+        if playerQueen is None or antCount == 0:
+            compressedState["lost"] = True
+            
         # return the evaluation score of the state
         return compressedState
     
@@ -178,27 +166,65 @@ class AIPlayer(Player):
     #   A reward value between -1.0 and 1.0 inclusive
     ##
     def rewardFunction(self, compressedState):
-        if not compressedState["enemy_queen"]["exists"]:
+        if "won" in compressedState:
             return 1.0
-        if not compressedState["queen"]["exists"] or (not compressedState["worker1"]["exists"] and not compressedState["worker2"]["exists"]) :
+        elif "lost" in compressedState:
             return -1.0
-        return -0.01 * compressedState["enemy_queen"]["health"]
+        reward = 0    
+        enemyQueenHealthWeight = 0.1
+        queenHealthWeight = 0.01
+        nonQueenAntDistWeight = 0.001
+        for key in compressedState.keys():
+            if key == "enemy_queen":
+                reward -= enemyQueenHealthWeight*compressedState[key]["health"]
+            if key == "queen":
+                reward -= queenHealthWeight*(UNIT_STATS[QUEEN][HEALTH] - compressedState[key]["health"])
+            elif key.startswith("ant"):
+                reward += nonQueenAntDistWeight*(20 - compressedState[key]["distance"])
+        return reward
             
-            
+    
     ##
-    # dictToTuple
+    # flattenDict
     #
-    # Description: Converts a consolidatedState dictionary to a tuple
+    # Description: Converts a nested dictionary to a 1D dictionary
+    # Source: http://stackoverflow.com/questions/6027558/flatten-nested-python-dictionaries-compressing-keys
     #
     # Parameters:
-    #   stateDict - the consolidated state to convert'
+    #   self - the object pointer
+    #   d - the dict to flatten
+    #   parent_key - the key from one level up in the nested dicts
+    #   sep - a seperator for keys and parent keys (default '_')
     #
     # Returns:
-    #   the corresponding tuple representation
+    #   a 1D dictionary representing the original nested dict
     ##
-    def dictToTuple(self, stateDict):
-        return tuple([(item[0], tuple(item[1].items())) for item in stateDict.items()])
-        
+    def flattenDict(self, d, parent_key='', sep='_'):
+        items = []
+        for k, v in d.items():
+            new_key = parent_key + sep + k if parent_key else k
+            if isinstance(v, collections.MutableMapping):
+                items.extend(self.flattenDict(v, new_key, sep=sep).items())
+            else:
+                items.append((new_key, v))
+        return dict(items)
+    
+
+    ##
+    # flattenDictToTuple
+    #
+    # Description: Converts a nested dictionary to a tuple
+    #
+    # Parameters:
+    #   self - the object pointer
+    #   dict - the dict to convert
+    #
+    # Returns:
+    #   a tuple representation of the dict
+    ##
+    def flattenDictToTuple(self, dict):
+        return tuple(sorted(self.flattenDict(dict).items()))
+    
         
     ##
     # saveUtilityList
@@ -226,8 +252,8 @@ class AIPlayer(Player):
     def addStateUtility(self, currentState, nextState=None):             
         # convert the current state to tuple form to be used as a dictionary key
         curStateDict = self.consolidateState(currentState)
-        curStateTuple = self.dictToTuple(curStateDict) 
-        
+        curStateTuple = self.flattenDictToTuple(curStateDict) 
+
         # in the case of the first move of a game, if we have not seen
         # the initial state, set it's utility to 0, otherwise leave it
         if nextState is None:
@@ -236,13 +262,14 @@ class AIPlayer(Player):
                 self.utilityDict[curStateTuple] = 0
         else:    
             # convert the next state to tuple form to be used as a dictionary key
-            nextStateTuple = self.dictToTuple(self.consolidateState(nextState))     
+            nextStateTuple = self.flattenDictToTuple(self.consolidateState(nextState))     
             # store the state's utility in the dict
             if nextStateTuple not in self.utilityDict:
                 # state not previously encountered, default utility to 0
                 self.utilityDict[nextStateTuple] = 0
             else:
                 self.utilityDict[curStateTuple] += self.td_alpha*(self.rewardFunction(curStateDict) + self.td_lambda*self.utilityDict[nextStateTuple] - self.utilityDict[curStateTuple])
+                
         return self.utilityDict[curStateTuple]
     
     
@@ -271,7 +298,7 @@ class AIPlayer(Player):
             
             # get the utility of the current state based on the potential state
             stateUtil = self.addStateUtility(currentState, potentialState) 
-                
+            
             # keep track of the best move so far and its utility
             if stateUtil > bestMoveUtil:
                 bestMoveUtil = stateUtil
@@ -640,7 +667,8 @@ class AIPlayer(Player):
         
         # TODO COMMENTS
         x = self.td_alpha
-        decreaseBy = (1.0 - (1.0/(math.e**(x**8))))*0.1
+        # decreaseBy = (1.0 - (1.0/(math.e**(x**16))))*0.1
+        decreaseBy = 0.001 if x > 0.1 else 0
         self.td_alpha -= decreaseBy
         print "LR-B4: %0.5f\tLR-AF: %0.5f\tDelta: %0.5f\tNum States Encountered: %d" % (x, self.td_alpha, decreaseBy, len(self.utilityDict))
         self.saveUtilityList()
