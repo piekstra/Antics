@@ -18,9 +18,6 @@ from Move import Move
 from GameState import addCoords
 from AIPlayerUtils import *
 
-#file name constant
-UTILITY_FILE = "underwoo16_piekstra17_utility.awesome3_01"
-
 ##
 #AIPlayer
 #Description: The responsbility of this class is to interact with the game by
@@ -57,6 +54,12 @@ class AIPlayer(Player):
         
         # the change amount of the learning rate (higher is more change)
         self.td_alpha_change_amount = 0.1
+
+        # set the unique identifier for the AI and its utilities file (based on the alpha change values)
+        self.AIID = str(self.td_alpha_change_rate) + '_' + str(self.td_alpha_change_amount).replace('.', '')+ "_LS"
+        
+        #file name constant
+        self.utilityFile = "utility." + self.AIID 
         
         # keep track of the number of states encountered
         self.statesEncountered = 0
@@ -68,11 +71,11 @@ class AIPlayer(Player):
         self.gameCount = 0
         
         # TODO comments
-        if filePath.isfile(UTILITY_FILE):
+        if filePath.isfile(self.utilityFile):
             self.loadUtilityList()
 
         # RTD2 - Relativistic Temporal Differentiator 2.0 
-        super(AIPlayer,self).__init__(inputPlayerId, "RTD2") 
+        super(AIPlayer,self).__init__(inputPlayerId, "RTD2-" + self.AIID) 
             
            
     ##
@@ -245,7 +248,7 @@ class AIPlayer(Player):
     #
     ##
     def saveUtilityList(self):
-        with open("AI/"+UTILITY_FILE, 'wb') as f:
+        with open("AI/"+self.utilityFile, 'wb') as f:
             pickle.dump(self.utilityDict, f, 0)
         
         
@@ -256,7 +259,7 @@ class AIPlayer(Player):
     #
     ##
     def loadUtilityList(self):
-        with open(UTILITY_FILE, 'rb') as f:
+        with open(self.utilityFile, 'rb') as f:
             self.utilityDict = pickle.load(f)
     
     
@@ -627,7 +630,7 @@ class AIPlayer(Player):
         prev_alpha = self.td_alpha
         decreaseBy = (1.0 - (1.0/(math.e**(prev_alpha**self.td_alpha_change_rate))))*self.td_alpha_change_amount
         self.td_alpha -= decreaseBy        
-        print "Learning Rate: %0.5f - %0.5f = %0.5f\t\t%d known states\t%d new states" % (prev_alpha, decreaseBy, self.td_alpha, len(self.utilityDict), self.newStatesFound)
+        print "AI: " + self.AIID + "  Learning Rate: %0.5f - %0.5f = %0.5f\t\t%d known states\t%d new states" % (prev_alpha, decreaseBy, self.td_alpha, len(self.utilityDict), self.newStatesFound)
         # reset the number of states encountered
         self.statesEncountered = 0        
         # reset how many new states were discovered
